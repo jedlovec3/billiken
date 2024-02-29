@@ -1,0 +1,99 @@
+---
+title: "Import Billiken Sheets"
+output: html_notebook
+---
+
+Load libraries
+
+```{r}
+library(tidyverse)
+library(googlesheets4)
+library(fuzzyjoin)
+
+```
+
+Import google sheets of Billiken League data
+```{r}
+(prefreeze_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1E-MsV8UEWyL3zv7ybS6a40l0sxIu7dmah2bhaBJaLNw/edit#gid=0", sheet = "PreFreezeRosters", col_types = 'ccccccc') %>% 
+  filter(!is.na(player)))
+
+(frozen_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1kMYiBTInNR3qEcyXtADD0CX7LH7dddzHF3ovbk-cWqw/edit#gid=212188698", sheet = "Frozen Rosters '24", col_types = 'cccccc'))
+
+(draft <- read_sheet("https://docs.google.com/spreadsheets/d/1kMYiBTInNR3qEcyXtADD0CX7LH7dddzHF3ovbk-cWqw/edit#gid=212188698", sheet = "Draft '24", col_types = 'ciiiccccccccccccccc'))
+
+(salaries <- read_sheet("https://docs.google.com/spreadsheets/d/1kMYiBTInNR3qEcyXtADD0CX7LH7dddzHF3ovbk-cWqw/edit#gid=212188698", sheet = "Salaries '24", col_types = 'ccc'))
+```
+
+Load FanGraphs Depth Charts Projections files
+```{r}
+
+hitter_projections <- read_csv("hitter_projections_2024.csv") 
+
+pitcher_projections <- read_csv("pitcher_projections_2024.csv")
+
+hitter_projections
+pitcher_projections
+
+```
+
+Filter out non-player rows
+```{r}
+prefreeze_rosters %>% 
+  filter(!is.na(player)) %>% 
+  filter(billikenTeam == "Free Birds")
+  #filter('player' != "NA")
+  #filter(is.na('player'))
+  
+  #mutate('player' = ifelse(is.na(player),'test',player)) 
+  #filter(!is.na('player')) 
+
+```
+
+
+Merge projections with pre-freeze rosters
+
+```{r}
+hitter_projections %>% 
+#Find NL projections only
+  filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
+  #left_join(prefreeze_rosters, join_by('Name'=='player')) 
+  stringdist_left_join(prefreeze_rosters, by = c("Name" = "player"), max_dist = 2)
+
+pitcher_projections %>% 
+#Find NL projections only
+  filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
+  #left_join(prefreeze_rosters, join_by('Name'=='player')) 
+  stringdist_left_join(prefreeze_rosters, by = c("Name" = "player"), max_dist = 2)
+
+```
+
+Team Totals
+```{r}
+(hitter_team_totals <- hitter_projections %>% 
+#Find NL projections only
+  filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
+  stringdist_left_join(prefreeze_rosters, by = c("Name" = "player"), max_dist = 2) %>% 
+  group_by(billikenTeam) %>% 
+  summarize(n=n(), PA = sum(PA), AB = sum(AB), H = sum(H), HR = sum(HR), R = sum(R), RBI = sum(RBI), SB = sum(SB), AVG = sum(H)/sum(AB)))
+
+
+(pitcher_team_totals <- pitcher_projections %>% 
+#Find NL projections only
+  filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
+  stringdist_left_join(prefreeze_rosters, by = c("Name" = "player"), max_dist = 2) %>% 
+  group_by(billikenTeam) %>% 
+  summarize(n=n(), W = sum(W), SV = sum(SV), IP = sum(IP), ER = sum(ER), H = sum(H), BB = sum(BB), ERA = sum(ER)*9/sum(IP), WHIP = (sum(H)+sum(BB))/sum(IP)) )
+
+
+```
+Team Standings
+```{r}
+
+```
+
+Project standings variability
+
+Project/simulate draft
+- Project/simulate next draft pick
+
+Build form for draft picks
