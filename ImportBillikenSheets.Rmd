@@ -38,14 +38,11 @@ pitcher_projections
 
 Filter out non-player rows
 ```{r}
-prefreeze_rosters %>% 
+(prefreeze_rosters <- prefreeze_rosters %>% 
   filter(!is.na(player)) %>% 
-  filter(billikenTeam == "Free Birds")
-  #filter('player' != "NA")
-  #filter(is.na('player'))
-  
-  #mutate('player' = ifelse(is.na(player),'test',player)) 
-  #filter(!is.na('player')) 
+  mutate(across(c("salary"), ~gsub("\\$", "", .) %>% as.numeric)))
+
+  #filter(billikenTeam == "Free Birds")
 
 ```
 
@@ -111,10 +108,53 @@ hitter_points %>%
 Project standings variability
 ```{r}
 
+hr_model <- lm(hr ~ HR, hitter_points) 
+r_model <- lm(r ~ R, hitter_points) 
+rbi_model <- lm(rbi ~ RBI, hitter_points) 
+sb_model <- lm(sb ~ SB, hitter_points) 
+avg_model <- lm(avg ~ AVG, hitter_points) 
+
+w_model <- lm(w ~ W, pitcher_points) 
+sv_model <- lm(sv ~ SV, pitcher_points) 
+so_model <- lm(so ~ SO, pitcher_points) 
+era_model <- lm(era ~ ERA, pitcher_points) 
+whip_model <- lm(whip ~ WHIP, pitcher_points) 
+
+hr_factor = hr_model$coefficients["HR"]
+r_factor = r_model$coefficients["R"]
+rbi_factor = rbi_model$coefficients["RBI"]
+sb_factor = sb_model$coefficients["SB"]
+avg_factor = avg_model$coefficients["AVG"]
+
+melonheads_ab <- pull(hitter_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(AB))
+
+w_factor = w_model$coefficients["W"]
+sv_factor = sv_model$coefficients["SV"]
+so_factor = so_model$coefficients["SO"]
+era_factor = era_model$coefficients["ERA"]
+whip_factor = whip_model$coefficients["WHIP"]
+
 ```
+
+Build list of project draft value
+```{r}
+#List of available players
+hitter_projections %>% 
+  filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
+  stringdist_left_join(prefreeze_rosters, by = c("Name" = "player"), max_dist = 2) %>% 
+  filter(is.na(billikenTeam)) %>% 
+  mutate(AVG = round(AVG,3)) %>% 
+  mutate(avg_value = melonheads_ab)
+  mutate(point_value = round(HR*hr_factor+R*r_factor+RBI*rbi_factor+SB*sb_factor,1)) %>%  #+AVG*avg_factor)
+  select(Name, Team, PA, HR, R, RBI, SB, AVG, point_value, avg_value) %>% 
+  arrange(desc(point_value))
+
+```
+
 
 
 Project/simulate draft
 - Project/simulate next draft pick
 
-Build form for draft picks
+
+Build form for draft picks with projected standings
