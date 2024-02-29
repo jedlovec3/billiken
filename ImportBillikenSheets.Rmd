@@ -82,16 +82,37 @@ Team Totals
   filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
   stringdist_left_join(prefreeze_rosters, by = c("Name" = "player"), max_dist = 2) %>% 
   group_by(billikenTeam) %>% 
-  summarize(n=n(), W = sum(W), SV = sum(SV), IP = sum(IP), ER = sum(ER), H = sum(H), BB = sum(BB), ERA = sum(ER)*9/sum(IP), WHIP = (sum(H)+sum(BB))/sum(IP)) )
+  summarize(n=n(), W = sum(W), SV = sum(SV), IP = sum(IP), SO = sum(SO), ER = sum(ER), H = sum(H), BB = sum(BB), ERA = sum(ER)*9/sum(IP), WHIP = (sum(H)+sum(BB))/sum(IP)) )
 
 
 ```
 Team Standings
 ```{r}
+hitter_points <- hitter_team_totals %>% 
+  filter(!is.na(billikenTeam)) %>% 
+  mutate(hr = 10 - dense_rank(desc(HR)), r = 10 - dense_rank(desc(R)), rbi = 10 - dense_rank(desc(RBI)), sb = 10 - dense_rank(desc(SB)), avg = 10 - dense_rank(desc(AVG))) %>% 
+  mutate(hit = hr + r + rbi + sb + avg) %>% 
+  arrange(desc(hit))
+
+pitcher_points <- pitcher_team_totals %>% 
+  filter(!is.na(billikenTeam)) %>% 
+  mutate(w = 10 - dense_rank(desc(W)), sv = 10 - dense_rank(desc(SV)), so = 10 - dense_rank(desc(SO)), era = 10 - dense_rank(desc(ERA)), whip = 10 - dense_rank(desc(WHIP))) %>%
+  mutate(pit = w + sv + so + era + whip) %>% 
+  arrange(desc(pit)) 
+
+hitter_points %>% 
+  inner_join(pitcher_points, by = join_by(billikenTeam)) %>% 
+  mutate(total = hit + pit) %>% 
+  select(billikenTeam, total, hr, r, rbi, sb, avg, w, sv, so, era, whip, total) %>% 
+  arrange(desc(total)) 
 
 ```
 
 Project standings variability
+```{r}
+
+```
+
 
 Project/simulate draft
 - Project/simulate next draft pick
