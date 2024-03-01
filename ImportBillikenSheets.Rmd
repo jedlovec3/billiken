@@ -88,26 +88,93 @@ Team Standings
 hitter_points <- hitter_team_totals %>% 
   filter(!is.na(billikenTeam)) %>% 
   mutate(hr = 10 - dense_rank(desc(HR)), r = 10 - dense_rank(desc(R)), rbi = 10 - dense_rank(desc(RBI)), sb = 10 - dense_rank(desc(SB)), avg = 10 - dense_rank(desc(AVG))) %>% 
+  mutate(hr_pct = (hr-1)/8, r_pct = (r-1)/8, rbi_pct = (rbi-1)/8, sb_pct = (sb-1)/8, avg_pct = (avg-1)/8) %>% 
   mutate(hit = hr + r + rbi + sb + avg) %>% 
   arrange(desc(hit))
 
 pitcher_points <- pitcher_team_totals %>% 
   filter(!is.na(billikenTeam)) %>% 
-  mutate(w = 10 - dense_rank(desc(W)), sv = 10 - dense_rank(desc(SV)), so = 10 - dense_rank(desc(SO)), era = 10 - dense_rank(desc(ERA)), whip = 10 - dense_rank(desc(WHIP))) %>%
+  mutate(w = 10 - dense_rank(desc(W)), sv = 10 - dense_rank(desc(SV)), so = 10 - dense_rank(desc(SO)), era = 10 - dense_rank(ERA), whip = 10 - dense_rank(WHIP)) %>%
+  mutate(w_pct = (w-1)/8, sv_pct = (sv-1)/8, so_pct = (so-1)/8, era_pct = (era-1)/8, whip_pct = (whip-1)/8) %>%
   mutate(pit = w + sv + so + era + whip) %>% 
   arrange(desc(pit)) 
 
-hitter_points %>% 
-  inner_join(pitcher_points, by = join_by(billikenTeam)) %>% 
-  mutate(total = hit + pit) %>% 
-  select(billikenTeam, total, hr, r, rbi, sb, avg, w, sv, so, era, whip, total) %>% 
-  arrange(desc(total)) 
+```
+
+
+Project category variability
+```{r}
+ggplot(hitter_points, aes(HR, hr_pct)) +
+  geom_point() +
+  stat_smooth(method="glm", method.args = list(family=binomial))
+
+ggplot(pitcher_points, aes(ERA, era_pct)) +
+  geom_point() +
+  stat_smooth(method="glm", method.args = list(family=binomial))
 
 ```
 
-Project standings variability
+Fit logistic regression curves
+```{r}
+hr_model_glm <- glm(hr_pct ~ HR, data = hitter_points, family = "binomial")
+hitter_points$hr_pts_pred = predict(hr_model_glm, hitter_points, type="response")*8+1
+
+r_model_glm <- glm(r_pct ~ R, data = hitter_points, family = "binomial")
+hitter_points$r_pts_pred = predict(r_model_glm, hitter_points, type="response")*8+1
+
+rbi_model_glm <- glm(rbi_pct ~ RBI, data = hitter_points, family = "binomial")
+hitter_points$rbi_pts_pred = predict(rbi_model_glm, hitter_points, type="response")*8+1
+
+sb_model_glm <- glm(sb_pct ~ SB, data = hitter_points, family = "binomial")
+hitter_points$sb_pts_pred = predict(sb_model_glm, hitter_points, type="response")*8+1
+
+avg_model_glm <- glm(avg_pct ~ AVG, data = hitter_points, family = "binomial")
+hitter_points$avg_pts_pred = predict(hr_model_glm, hitter_points, type="response")*8+1
+
+hitter_points <- hitter_points %>% 
+  mutate(hitter_points_pred = hr_pts_pred + r_pts_pred + rbi_pts_pred + sb_pts_pred + avg_pts_pred)
+
+hitter_points
+
+#instead of running this on teams, run this for every potential drafted player to project points impact of each player based on the current composition of each roster
+
+```
+
 ```{r}
 
+w_model_glm <- glm(w_pct ~ W, data = pitcher_points, family = "binomial")
+pitcher_points$w_pts_pred = predict(w_model_glm, pitcher_points, type="response")*8+1
+
+sv_model_glm <- glm(sv_pct ~ SV, data = pitcher_points, family = "binomial")
+pitcher_points$sv_pts_pred = predict(sv_model_glm, pitcher_points, type="response")*8+1
+
+so_model_glm <- glm(so_pct ~ SO, data = pitcher_points, family = "binomial")
+pitcher_points$so_pts_pred = predict(so_model_glm, pitcher_points, type="response")*8+1
+
+era_model_glm <- glm(era_pct ~ ERA, data = pitcher_points, family = "binomial")
+pitcher_points$era_pts_pred = predict(era_model_glm, pitcher_points, type="response")*8+1
+
+whip_model_glm <- glm(whip_pct ~ WHIP, data = pitcher_points, family = "binomial")
+pitcher_points$whip_pts_pred = predict(whip_model_glm, pitcher_points, type="response")*8+1
+
+(pitcher_points <- pitcher_points %>% 
+  mutate(pitcher_points_pred = w_pts_pred + sv_pts_pred + so_pts_pred + era_pts_pred + whip_pts_pred) %>% 
+    arrange(desc(pitcher_points_pred)))
+```
+
+```{r}
+hitter_points %>% 
+  inner_join(pitcher_points, by = join_by(billikenTeam)) %>% 
+  mutate(total = round(hitter_points_pred + pitcher_points_pred,1)) %>% 
+  #mutate(total = hit + pit) %>% 
+  select(billikenTeam, total, hr, r, rbi, sb, avg, w, sv, so, era, whip, total) %>% 
+  arrange(desc(total)) 
+```
+
+Player projected point impact (average, not situation-based)
+
+Simple linear model by category
+```{r}
 hr_model <- lm(hr ~ HR, hitter_points) 
 r_model <- lm(r ~ R, hitter_points) 
 rbi_model <- lm(rbi ~ RBI, hitter_points) 
@@ -126,6 +193,7 @@ rbi_factor = rbi_model$coefficients["RBI"]
 sb_factor = sb_model$coefficients["SB"]
 avg_factor = avg_model$coefficients["AVG"]
 
+melonheads_h <- pull(hitter_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(H))
 melonheads_ab <- pull(hitter_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(AB))
 
 w_factor = w_model$coefficients["W"]
@@ -133,6 +201,10 @@ sv_factor = sv_model$coefficients["SV"]
 so_factor = so_model$coefficients["SO"]
 era_factor = era_model$coefficients["ERA"]
 whip_factor = whip_model$coefficients["WHIP"]
+
+melonheads_ip <- pull(pitcher_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(IP))
+melonheads_er <- pull(pitcher_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(ER))
+melonheads_wh <- pull(pitcher_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(BB)) + pull(pitcher_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(H))
 
 ```
 
@@ -144,11 +216,30 @@ hitter_projections %>%
   stringdist_left_join(prefreeze_rosters, by = c("Name" = "player"), max_dist = 2) %>% 
   filter(is.na(billikenTeam)) %>% 
   mutate(AVG = round(AVG,3)) %>% 
-  mutate(avg_value = melonheads_ab)
-  mutate(point_value = round(HR*hr_factor+R*r_factor+RBI*rbi_factor+SB*sb_factor,1)) %>%  #+AVG*avg_factor)
-  select(Name, Team, PA, HR, R, RBI, SB, AVG, point_value, avg_value) %>% 
+  mutate(point_value = round(HR * hr_factor + R * r_factor + RBI * rbi_factor + SB * sb_factor + avg_factor * ((melonheads_h + H)/(melonheads_ab + AB) - melonheads_h/melonheads_ab),1)) %>%  
+  select(Name, Team, PA, HR, R, RBI, SB, AVG, point_value) %>% 
   arrange(desc(point_value))
 
+```
+
+```{r}
+hitter_projections <- hitter_projections %>% 
+  mutate(point_value = round(HR * hr_factor + R * r_factor + RBI * rbi_factor + SB * sb_factor + avg_factor * ((melonheads_h + H)/(melonheads_ab + AB) - melonheads_h/melonheads_ab),1))
+
+pitcher_projections <- pitcher_projections %>% 
+  mutate(point_value = round(W * w_factor + SV * sv_factor + SO * so_factor + era_factor * (9*(melonheads_er + ER)/(melonheads_ip + IP) - 9*melonheads_er/melonheads_ip) + whip_factor * ((melonheads_wh + BB + H)/(melonheads_ip + IP) - melonheads_wh/melonheads_ip),1))
+
+```
+
+
+```{r}
+bind_rows(hitter_projections, pitcher_projections) %>% 
+  filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
+  stringdist_left_join(prefreeze_rosters, by = c("Name" = "player"), max_dist = 2) %>% 
+  filter(is.na(billikenTeam)) %>% 
+  mutate(AVG = round(AVG,3), ERA = round(ERA,2), WHIP = round(WHIP,2)) %>%  
+  select(Name, Team, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, point_value) %>% 
+  arrange(desc(point_value))
 ```
 
 
