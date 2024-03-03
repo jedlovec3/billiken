@@ -1,0 +1,13 @@
+name: DraftAssistant
+title: DraftAssistant
+username:
+account: jedlovec3
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 11385599
+bundleId: 8321167
+url: https://jedlovec3.shinyapps.io/DraftAssistant/
+when: 1709431244.19529
+lastSyncTime: 1709431244.19531
+asMultiple: FALSE
+asStatic: FALSE

@@ -12,19 +12,21 @@ library(tidyverse)
 library(googlesheets4)
 library(fuzzyjoin)
 
+gs4_deauth()
+
 #Pull pre-draft data
 prefreeze_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1E-MsV8UEWyL3zv7ybS6a40l0sxIu7dmah2bhaBJaLNw/edit#gid=0", sheet = "PreFreezeRosters", col_types = 'ccccccc') %>% 
   filter(!is.na(player)) %>% 
   mutate(across(c("salary"), ~gsub("\\$", "", .) %>% as.numeric))
-frozen_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1kMYiBTInNR3qEcyXtADD0CX7LH7dddzHF3ovbk-cWqw/edit#gid=212188698", sheet = "Frozen Rosters '24", col_types = 'cccccc')
-salaries <- read_sheet("https://docs.google.com/spreadsheets/d/1kMYiBTInNR3qEcyXtADD0CX7LH7dddzHF3ovbk-cWqw/edit#gid=212188698", sheet = "Salaries '24", col_types = 'ccc')
+frozen_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1E-MsV8UEWyL3zv7ybS6a40l0sxIu7dmah2bhaBJaLNw/edit#gid=1008004729", sheet = "FrozenRosters", col_types = 'cccccc')
+salaries <- read_sheet("https://docs.google.com/spreadsheets/d/1E-MsV8UEWyL3zv7ybS6a40l0sxIu7dmah2bhaBJaLNw/edit#gid=1008004729", sheet = "Salaries", col_types = 'ccc')
 
 #Load FanGraphs projections downloaded locally
 hitter_projections <- read_csv("hitter_projections_2024.csv") 
 pitcher_projections <- read_csv("pitcher_projections_2024.csv")
 
 #Pull latest Billiken Draft data
-draft <- read_sheet("https://docs.google.com/spreadsheets/d/1kMYiBTInNR3qEcyXtADD0CX7LH7dddzHF3ovbk-cWqw/edit#gid=212188698", sheet = "Draft '24", col_types = 'ciiiccccccccccccccc')
+draft <- read_sheet("https://docs.google.com/spreadsheets/d/1E-MsV8UEWyL3zv7ybS6a40l0sxIu7dmah2bhaBJaLNw/edit#gid=1008004729", sheet = "Draft", col_types = 'ciiicccccc')
 
 #Combined totals from pre-freeze rosters
 #Change to use frozen rosters after 3/10

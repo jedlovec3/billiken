@@ -233,6 +233,18 @@ pitcher_projections <- pitcher_projections %>%
 
 ```{r}
 bind_rows(hitter_projections, pitcher_projections) %>% 
+  #filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
+  stringdist_left_join(prefreeze_rosters, by = c("Name" = "player"), max_dist = 2) %>% 
+  filter(billikenTeam == "Melonheads") %>% 
+  mutate(AVG = round(AVG,3), ERA = round(ERA,2), WHIP = round(WHIP,2)) %>%  
+  select(Name, Team, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, point_value) %>% 
+  arrange(desc(point_value))
+
+```
+
+
+```{r}
+bind_rows(hitter_projections, pitcher_projections) %>% 
   filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
   stringdist_left_join(prefreeze_rosters, by = c("Name" = "player"), max_dist = 2) %>% 
   filter(is.na(billikenTeam)) %>% 
@@ -242,10 +254,13 @@ bind_rows(hitter_projections, pitcher_projections) %>%
 
 ```
 
+Fix authentication
 
+Replacement level
 
 Project/simulate draft
 - Project/simulate next draft pick
 
+Factor in salaries and cap
 
 Build form for draft picks with projected standings

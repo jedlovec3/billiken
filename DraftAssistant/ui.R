@@ -13,7 +13,7 @@ library(shiny)
 fluidPage(
 
     # Application title
-    #titlePanel("Billiken League Draft Assistant"),
+    titlePanel("Billiken League Draft Assistant"),
 
     mainPanel(
       dataTableOutput('available_players')
