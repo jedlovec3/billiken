@@ -32,13 +32,13 @@ fluidPage(
       #                )
       # ),
       
-      dataTableOutput('projected_standings')
-      #dataTableOutput('players')
-    )#,
-    # 
-    # sidebarPanel(
-    #   dataTableOutput('projected_standings')
-    # )
+      #dataTableOutput('projected_standings')
+      dataTableOutput('available_players')
+    ),
+
+    sidebarPanel(
+    dataTableOutput('projected_standings')
+     )
         
 )
 
