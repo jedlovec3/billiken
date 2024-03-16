@@ -44,18 +44,22 @@ pitcher_team_totals <- pitcher_projections %>%
     summarize(n=n(), W = sum(W), SV = sum(SV), IP = sum(IP), SO = sum(SO), ER = sum(ER), H = sum(H), BB = sum(BB), ERA = sum(ER)*9/sum(IP), WHIP = (sum(H)+sum(BB))/sum(IP)) 
 
 #Rank Team Totals
+n_teams <- pull(count(hitter_team_totals %>% filter(!is.na(billikenTeam)) %>% distinct(billikenTeam)))
+
 hitter_points <- hitter_team_totals %>% 
   filter(!is.na(billikenTeam)) %>% 
-  mutate(hr = 10 - dense_rank(desc(HR)), r = 10 - dense_rank(desc(R)), rbi = 10 - dense_rank(desc(RBI)), sb = 10 - dense_rank(desc(SB)), avg = 10 - dense_rank(desc(AVG))) %>% 
-  mutate(hr_pct = (hr-1)/8, r_pct = (r-1)/8, rbi_pct = (rbi-1)/8, sb_pct = (sb-1)/8, avg_pct = (avg-1)/8) %>% 
+  mutate(hr = n_teams+1 - dense_rank(desc(HR)), r = n_teams+1 - dense_rank(desc(R)), rbi = n_teams+1 - dense_rank(desc(RBI)), sb = n_teams+1 - dense_rank(desc(SB)), avg = n_teams+1 - dense_rank(desc(AVG))) %>% 
+  mutate(hr_pct = (hr-1)/(n_teams-1), r_pct = (r-1)/(n_teams-1), rbi_pct = (rbi-1)/(n_teams-1), sb_pct = (sb-1)/(n_teams-1), avg_pct = (avg-1)/(n_teams-1)) %>% 
   mutate(hit = hr + r + rbi + sb + avg) %>% 
   arrange(desc(hit))
+
 pitcher_points <- pitcher_team_totals %>% 
   filter(!is.na(billikenTeam)) %>% 
-  mutate(w = 10 - dense_rank(desc(W)), sv = 10 - dense_rank(desc(SV)), so = 10 - dense_rank(desc(SO)), era = 10 - dense_rank(ERA), whip = 10 - dense_rank(WHIP)) %>%
-  mutate(w_pct = (w-1)/8, sv_pct = (sv-1)/8, so_pct = (so-1)/8, era_pct = (era-1)/8, whip_pct = (whip-1)/8) %>%
+  mutate(w = n_teams+1 - dense_rank(desc(W)), sv = n_teams+1 - dense_rank(desc(SV)), so = n_teams+1 - dense_rank(desc(SO)), era = n_teams+1 - dense_rank(ERA), whip = n_teams+1 - dense_rank(WHIP)) %>%
+  mutate(w_pct = (w-1)/(n_teams-1), sv_pct = (sv-1)/(n_teams-1), so_pct = (so-1)/(n_teams-1), era_pct = (era-1)/(n_teams-1), whip_pct = (whip-1)/(n_teams-1)) %>%
   mutate(pit = w + sv + so + era + whip) %>% 
-  arrange(desc(pit)) 
+  arrange(desc(pit))
+
 
 #Continuous models of hitting categories
 hr_model_glm <- glm(hr_pct ~ HR, data = hitter_points, family = "binomial")
