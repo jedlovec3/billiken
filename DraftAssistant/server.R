@@ -142,48 +142,48 @@ print("Finished running server")
 
 # Define server logic required to draw a histogram
 function(input, output, session) {
-
   
-    output$available_players <- renderDataTable(
-      available_players, 
-      options = list(
-        pageLength = 20,
-        autoWidth = TRUE,
-        scrollX = TRUE, 
-        columnDefs = list(list(targets=c(0), visible=TRUE, width='150')
-        )
-      )
-      #datatable(available_players, options = list(orderClasses = TRUE, options = list(lengthMenu = c(10, 25), pageLength = 20)))
-    )
-
-    output$projected_standings <- renderDataTable(
-      projected_standings, 
-      options = list(
-        pageLength = 10,
-        autoWidth = TRUE,
-        scrollX = TRUE, 
-        columnDefs = list(list(targets=c(0), visible=TRUE, width='50'))
+  
+  output$available_players <- renderDataTable(
+    available_players, 
+    options = list(
+      pageLength = 20,
+      autoWidth = TRUE,
+      scrollX = TRUE, 
+      columnDefs = list(list(targets=c(0), visible=TRUE, width='150')
       )
     )
-    
-    #output$proj_standings <- renderDataTable(
-    #  proj_standings
-    #  #datatable(proj_standings, options = list(orderClasses = TRUE, options = list(pageLength = 10)))
-    #)
-    
-    # output$proj_standings <- renderPlot({
-    # 
-    #     # generate bins based on input$bins from ui.R
-    #     x    <- faithful[, 2]
-    #     bins <- seq(min(x), max(x), length.out = input$bins + 1)
-    # 
-    #     # draw the histogram with the specified number of bins
-    #     hist(x, breaks = bins, col = 'darkgray', border = 'white',
-    #          xlab = 'Waiting time to next eruption (in mins)',
-    #          main = 'Histogram of waiting times')
-
-    #})
-    
-    print("Finished server function")
-    
+    #datatable(available_players, options = list(orderClasses = TRUE, options = list(lengthMenu = c(10, 25), pageLength = 20)))
+  )
+  
+  output$projected_standings <- renderDataTable(
+    projected_standings, 
+    options = list(
+      pageLength = 10,
+      autoWidth = TRUE,
+      scrollX = TRUE, 
+      columnDefs = list(list(targets=c(0), visible=TRUE, width='50'))
+    )
+  )
+  
+  #output$proj_standings <- renderDataTable(
+  #  proj_standings
+  #  #datatable(proj_standings, options = list(orderClasses = TRUE, options = list(pageLength = 10)))
+  #)
+  
+  # output$proj_standings <- renderPlot({
+  # 
+  #     # generate bins based on input$bins from ui.R
+  #     x    <- faithful[, 2]
+  #     bins <- seq(min(x), max(x), length.out = input$bins + 1)
+  # 
+  #     # draw the histogram with the specified number of bins
+  #     hist(x, breaks = bins, col = 'darkgray', border = 'white',
+  #          xlab = 'Waiting time to next eruption (in mins)',
+  #          main = 'Histogram of waiting times')
+  
+  #})
+  
+  print("Finished server function")
+  
 }
