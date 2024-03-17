@@ -128,13 +128,17 @@ pitcher_points <- pitcher_points %>%
     mutate(pitcher_points_pred = w_pts_pred + sv_pts_pred + so_pts_pred + era_pts_pred + whip_pts_pred) %>% 
     arrange(desc(pitcher_points_pred))
 
-#CHANGE THIS TO USE SMOOTHED POINTS BY CATEGORY
 projected_standings <- hitter_points %>% 
   inner_join(pitcher_points, by = join_by(billikenTeam)) %>% 
-  mutate(total = round(hitter_points_pred + pitcher_points_pred,1)) %>% 
+  mutate(total = round(hitter_points_pred + pitcher_points_pred,1), players = n.x + n.y) %>% 
+  mutate(across(ends_with("_pts_pred"), round, 1)) %>% 
   #mutate(total = hit + pit) %>% 
-  select(billikenTeam, total, hr, r, rbi, sb, avg, w, sv, so, era, whip, total) %>% 
+  select(billikenTeam, players, total, hr_pts_pred, r_pts_pred, rbi_pts_pred, sb_pts_pred, avg_pts_pred, w_pts_pred, sv_pts_pred, so_pts_pred, era_pts_pred, whip_pts_pred) %>% 
+  #select(billikenTeam, total, hr, r, rbi, sb, avg, w, sv, so, era, whip, total) %>% 
   arrange(desc(total)) 
+
+projected_standings <- projected_standings %>% 
+  rename(hr = hr_pts_pred, r = r_pts_pred, rbi = rbi_pts_pred, sb = sb_pts_pred, avg = avg_pts_pred, w = w_pts_pred, sv = sv_pts_pred,  so = so_pts_pred, era = era_pts_pred, whip = whip_pts_pred)
 
 #Calculate and assign category point values
 hr_model <- lm(hr ~ HR, hitter_points) 
@@ -271,9 +275,14 @@ print("Finished running server")
 # Define server logic required to draw a histogram
 function(input, output, session) {
   
+  #selected_team <- 
+  
+  selected_players <- reactive({
+    par %>% filter(billikenTeam == input$team | input$team == "Available" & is.na(billikenTeam))
+    })
   
   output$players <- renderDataTable(
-    par, 
+    selected_players(), 
     options = list(
       pageLength = 20,
       autoWidth = TRUE,
