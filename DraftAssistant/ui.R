@@ -32,6 +32,13 @@ fluidPage(
                      )
       ),
       
+      selectInput("pos", "Select a position:",
+                  list(
+                    "All","Hitters","P","C","1B","2B","3B","SS","OF","DH","CI","MI"
+                  )
+      ),
+      
+      
       dataTableOutput('players')
     ),
 
