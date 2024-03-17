@@ -134,7 +134,11 @@ projected_standings <- hitter_points %>%
   mutate(total = round(hitter_points_pred + pitcher_points_pred,1), players = n.x + n.y) %>% 
   mutate(across(ends_with("_pts_pred"), \(x) round(x, 1))) %>% 
   mutate(salary = salary.x + salary.y) %>% 
+<<<<<<< HEAD
   select(billikenTeam, players, salary, total, hr_pts_pred, r_pts_pred, rbi_pts_pred, sb_pts_pred, avg_pts_pred, w_pts_pred, sv_pts_pred, so_pts_pred, era_pts_pred, whip_pts_pred) %>% 
+=======
+  select(billikenTeam, players, total, salary, hr_pts_pred, r_pts_pred, rbi_pts_pred, sb_pts_pred, avg_pts_pred, w_pts_pred, sv_pts_pred, so_pts_pred, era_pts_pred, whip_pts_pred) %>% 
+>>>>>>> ebfbb009b13943d9eac15484fe69797dbbbb57a9
   arrange(desc(total)) 
 
 projected_standings <- projected_standings %>% 
