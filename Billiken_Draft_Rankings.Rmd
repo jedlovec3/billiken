@@ -14,6 +14,9 @@ library(fuzzyjoin)
 
 Import google sheets of Billiken League data
 ```{r}
+
+gs4_deauth()
+
 (frozen_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1kMYiBTInNR3qEcyXtADD0CX7LH7dddzHF3ovbk-cWqw/edit#gid=212188698", sheet = "Frozen Rosters '24", col_types = 'cccccc'))
 
 (draft <- read_sheet("https://docs.google.com/spreadsheets/d/1kMYiBTInNR3qEcyXtADD0CX7LH7dddzHF3ovbk-cWqw/edit#gid=212188698", sheet = "Draft '24", col_types = 'ciiiccccccccccccccc'))
@@ -101,12 +104,12 @@ Team Totals
 ```{r}
 (hitter_team_totals <- hitter_projections_nl %>% 
    group_by(billikenTeam) %>% 
-   summarize(n=n(), PA = sum(PA), AB = sum(AB), H = sum(H), HR = sum(HR), R = sum(R), RBI = sum(RBI), SB = sum(SB), AVG = sum(H)/sum(AB)))
+   summarize(n=n(), salary = sum(salary), PA = sum(PA), AB = sum(AB), H = sum(H), HR = sum(HR), R = sum(R), RBI = sum(RBI), SB = sum(SB), AVG = sum(H)/sum(AB)))
 
 
 (pitcher_team_totals <- pitcher_projections_nl %>% 
   group_by(billikenTeam) %>% 
-  summarize(n=n(), W = sum(W), SV = sum(SV), IP = sum(IP), SO = sum(SO), ER = sum(ER), H = sum(H), BB = sum(BB), ERA = sum(ER)*9/sum(IP), WHIP = (sum(H)+sum(BB))/sum(IP)) )
+  summarize(n=n(), salary = sum(salary), W = sum(W), SV = sum(SV), IP = sum(IP), SO = sum(SO), ER = sum(ER), H = sum(H), BB = sum(BB), ERA = sum(ER)*9/sum(IP), WHIP = (sum(H)+sum(BB))/sum(IP)) )
 
 
 ```
@@ -196,10 +199,9 @@ pitcher_points$whip_pts_pred = predict(whip_model_glm, pitcher_points, type="res
 projected_standings <- hitter_points %>% 
   inner_join(pitcher_points, by = join_by(billikenTeam)) %>% 
   mutate(total = round(hitter_points_pred + pitcher_points_pred,1), players = n.x + n.y) %>% 
-  mutate(across(ends_with("_pts_pred"), round, 1)) %>% 
-  #mutate(total = hit + pit) %>% 
-  select(billikenTeam, players, total, hr_pts_pred, r_pts_pred, rbi_pts_pred, sb_pts_pred, avg_pts_pred, w_pts_pred, sv_pts_pred, so_pts_pred, era_pts_pred, whip_pts_pred) %>% 
-  #select(billikenTeam, total, hr, r, rbi, sb, avg, w, sv, so, era, whip, total) %>% 
+  mutate(across(ends_with("_pts_pred"), \(x) round(x, 1))) %>% 
+  mutate(salary = salary.x + salary.y) %>% 
+  select(billikenTeam, players, total, salary, hr_pts_pred, r_pts_pred, rbi_pts_pred, sb_pts_pred, avg_pts_pred, w_pts_pred, sv_pts_pred, so_pts_pred, era_pts_pred, whip_pts_pred) %>% 
   arrange(desc(total)) 
 
 projected_standings <- projected_standings %>% 
@@ -283,7 +285,7 @@ projected_players <- bind_rows(hitter_projections_nl, pitcher_projections_nl) %>
   stringdist_left_join(salaries, by = c("Name" = "Player"), max_dist = 2) %>% 
   mutate(AVG = round(AVG,3), ERA = round(ERA,2), WHIP = round(WHIP,2), SO = case_when(IP == 0 ~ NA, IP > 0 ~ SO)) %>%  
   mutate(HR = case_when(PA == 0 ~ NA, PA > 0 ~ HR), R = case_when(PA == 0 ~ NA, PA > 0 ~ R)) %>% 
-  mutate(salary = coalesce(salary,new_salary), contract = coalesce(contract,1)) %>% 
+  mutate(salary = coalesce(salary,coalesce(new_salary,1)), contract = coalesce(contract,1)) %>% 
   select(Name, billikenTeam, contract, salary, Team, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, point_value, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh) %>% 
   arrange(desc(point_value))
 
@@ -436,5 +438,11 @@ par %>%
   arrange(desc(par)) 
   #arrange(desc(surplus)) 
 
+```
+
+```{r}
+projected_players %>% 
+  filter(Name == "Luis García Jr.") %>% 
+  mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
 ```
 

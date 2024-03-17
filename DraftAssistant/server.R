@@ -47,8 +47,10 @@ rosters <- rosters %>%
   filter(!is.na(player))
 
 #Load FanGraphs projections downloaded locally
-hitter_projections <- read_csv("hitter_projections_2024.csv") 
-pitcher_projections <- read_csv("pitcher_projections_2024.csv")
+hitter_projections <- read_csv("hitter_projections_2024.csv") %>% 
+  mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
+pitcher_projections <- read_csv("pitcher_projections_2024.csv") %>% 
+  mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
 
 hitter_projections_nl <- hitter_projections %>% 
   #Find NL projections only
@@ -60,14 +62,13 @@ pitcher_projections_nl <- pitcher_projections %>%
   filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
   stringdist_left_join(rosters, by = c("Name" = "player"), max_dist = 2)
 
-
 #Combined totals from pre-freeze rosters
 hitter_team_totals <- hitter_projections_nl %>% 
     group_by(billikenTeam) %>% 
-    summarize(n=n(), PA = sum(PA), AB = sum(AB), H = sum(H), HR = sum(HR), R = sum(R), RBI = sum(RBI), SB = sum(SB), AVG = sum(H)/sum(AB))
+    summarize(n=n(), salary = sum(salary), PA = sum(PA), AB = sum(AB), H = sum(H), HR = sum(HR), R = sum(R), RBI = sum(RBI), SB = sum(SB), AVG = sum(H)/sum(AB))
 pitcher_team_totals <- pitcher_projections_nl %>% 
     group_by(billikenTeam) %>% 
-    summarize(n=n(), W = sum(W), SV = sum(SV), IP = sum(IP), SO = sum(SO), ER = sum(ER), H = sum(H), BB = sum(BB), ERA = sum(ER)*9/sum(IP), WHIP = (sum(H)+sum(BB))/sum(IP))
+    summarize(n=n(), salary = sum(salary), W = sum(W), SV = sum(SV), IP = sum(IP), SO = sum(SO), ER = sum(ER), H = sum(H), BB = sum(BB), ERA = sum(ER)*9/sum(IP), WHIP = (sum(H)+sum(BB))/sum(IP))
 
 #Rank Team Totals
 n_teams <- pull(count(hitter_team_totals %>% filter(!is.na(billikenTeam)) %>% distinct(billikenTeam)))
@@ -131,10 +132,9 @@ pitcher_points <- pitcher_points %>%
 projected_standings <- hitter_points %>% 
   inner_join(pitcher_points, by = join_by(billikenTeam)) %>% 
   mutate(total = round(hitter_points_pred + pitcher_points_pred,1), players = n.x + n.y) %>% 
-  mutate(across(ends_with("_pts_pred"), round, 1)) %>% 
-  #mutate(total = hit + pit) %>% 
-  select(billikenTeam, players, total, hr_pts_pred, r_pts_pred, rbi_pts_pred, sb_pts_pred, avg_pts_pred, w_pts_pred, sv_pts_pred, so_pts_pred, era_pts_pred, whip_pts_pred) %>% 
-  #select(billikenTeam, total, hr, r, rbi, sb, avg, w, sv, so, era, whip, total) %>% 
+  mutate(across(ends_with("_pts_pred"), \(x) round(x, 1))) %>% 
+  mutate(salary = salary.x + salary.y) %>% 
+  select(billikenTeam, players, total, salary, hr_pts_pred, r_pts_pred, rbi_pts_pred, sb_pts_pred, avg_pts_pred, w_pts_pred, sv_pts_pred, so_pts_pred, era_pts_pred, whip_pts_pred) %>% 
   arrange(desc(total)) 
 
 projected_standings <- projected_standings %>% 
@@ -184,8 +184,8 @@ projected_players <- bind_rows(hitter_projections_nl, pitcher_projections_nl) %>
   stringdist_left_join(positions, by = c("Name" = "player"), max_dist = 2) %>% 
   stringdist_left_join(salaries, by = c("Name" = "Player"), max_dist = 2) %>% 
   mutate(AVG = round(AVG,3), ERA = round(ERA,2), WHIP = round(WHIP,2), SO = case_when(IP == 0 ~ NA, IP > 0 ~ SO)) %>%  
-  mutate(HR = case_when(PA == 0 ~ NA, PA > 0 ~ HR), R = case_when(PA == 0 ~ NA, PA > 0 ~ R)) %>% 
-  mutate(salary = coalesce(salary,new_salary), contract = coalesce(contract,1)) %>% 
+  mutate(HR = case_when(PA == 0 ~ NA, PA > 0 ~ HR), R = case_when(PA == 0 ~ NA, PA > 0 ~ R), AVG = case_when(PA == 0 ~ NA, PA > 0 ~ AVG)) %>% 
+  mutate(salary = coalesce(salary,coalesce(new_salary,1)), contract = coalesce(contract,1)) %>% 
   select(Name, billikenTeam, contract, salary, Team, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, point_value, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh) %>% 
   arrange(desc(point_value))
 
@@ -267,18 +267,16 @@ par <- projected_players %>%
   ) %>% 
   mutate(par = point_value - repl) %>% 
   arrange(desc(par)) %>% 
-  select(Name, Team, billikenTeam, contract, salary, point_value, repl, par, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh)
+  select(Name, Team, billikenTeam, contract, salary, point_value, par, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh)
 
-
-print("Finished running server")
 
 # Define server logic required to draw a histogram
 function(input, output, session) {
   
-  #selected_team <- 
-  
   selected_players <- reactive({
-    par %>% filter(billikenTeam == input$team | input$team == "Available" & is.na(billikenTeam))
+    par %>% 
+      filter(billikenTeam == input$team | input$team == "Available" & is.na(billikenTeam)) %>% 
+      filter(input$pos == "All" | (input$pos == "Hitters" & !is.na(p_c)) | (input$pos == "P" & is.na(p_c)) | (input$pos == "C" & p_c == 1) | (input$pos == "1B" & p_1b == 1) | (input$pos == "2B" & p_2b == 1) | (input$pos == "3B" & p_3b == 1) | (input$pos == "SS" & p_ss == 1) | (input$pos == "OF" & p_of == 1) | (input$pos == "DH" & p_dh == 1) | (input$pos == "CI" & p_ci == 1) | (input$pos == "MI" & p_mi == 1))
     })
   
   output$players <- renderDataTable(
@@ -290,7 +288,6 @@ function(input, output, session) {
       columnDefs = list(list(targets=c(0), visible=TRUE, width='150')
       )
     )
-    #datatable(available_players, options = list(orderClasses = TRUE, options = list(lengthMenu = c(10, 25), pageLength = 20)))
   )
   
   output$projected_standings <- renderDataTable(
@@ -302,39 +299,17 @@ function(input, output, session) {
       columnDefs = list(list(targets=c(0), visible=TRUE, width='50'))
     )
   )
+ 
   
-  #output$proj_standings <- renderDataTable(
-  #  proj_standings
-  #  #datatable(proj_standings, options = list(orderClasses = TRUE, options = list(pageLength = 10)))
-  #)
-  
-  # output$proj_standings <- renderPlot({
-  # 
-  #     # generate bins based on input$bins from ui.R
-  #     x    <- faithful[, 2]
-  #     bins <- seq(min(x), max(x), length.out = input$bins + 1)
-  # 
-  #     # draw the histogram with the specified number of bins
-  #     hist(x, breaks = bins, col = 'darkgray', border = 'white',
-  #          xlab = 'Waiting time to next eruption (in mins)',
-  #          main = 'Histogram of waiting times')
-  
-  #})
-  
-  print("Finished server function")
-  
-}
+  print("Finished server function") 
 
-#update for frozen rosters + drafted players + salaries
+  }
 
-#update with replacement level & value
-
-#force zeroes in projected stats
-
-#Fix team selector
 
 #Team specific impact
 
 #Show updated standings with draft pick?
 
 #simulate rest of draft
+
+#Factor in salaries and cap
