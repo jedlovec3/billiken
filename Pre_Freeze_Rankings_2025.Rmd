@@ -275,7 +275,7 @@ projected_players <- bind_rows(hitter_projections, pitcher_projections) %>%
   #mutate(salary = case_when(!is.na(billikenTeam) ~ salary, TRUE ~ new_salary)) %>% 
   #filter(is.na(Owner) & !is.na(billikenTeam)) %>% 
   mutate(AVG = round(AVG,3), ERA = round(ERA,2), WHIP = round(WHIP,2), SO = case_when(IP == 0 ~ NA, IP > 0 ~ SO)) %>%  
-  mutate(HR = case_when(PA == 0 ~ NA, PA > 0 ~ HR), R = case_when(PA == 0 ~ NA, PA > 0 ~ R)) %>% 
+  mutate(HR = case_when(PA == 0 ~ NA, PA > 0 ~ HR), R = case_when(PA == 0 ~ NA, PA > 0 ~ R), AVG = case_when(PA == 0 ~ NA, PA > 0 ~ AVG)) %>% 
   select(Name, billikenTeam, contract, salary, Team, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, point_value, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh) %>% 
   arrange(desc(point_value)) #%>% 
   #filter(billikenTeam == "Melonheads") 
@@ -375,9 +375,13 @@ Assume that we use the lowest replacement level of any position a player qualifi
 Points Above Replacement
 ```{r}
 par <- projected_players %>% 
-  mutate(repl = case_when(IP > 0 ~ 1.7, 
-                          p_c == 1 ~ 1.9,
-                          .default = 4.1)
+  mutate(repl = case_when(IP > 0 ~ 0.9, 
+                          p_c == 1 ~ 0.4,
+                          p_3b == 1 ~ 1.1,
+                          p_of == 1 ~ 1.5,
+                          p_ci == 1 ~ 1.5,
+                          p_1b == 1 ~ 1.8,
+                          .default = 2.1)
          ) %>% 
   mutate(par = point_value - repl) %>% 
   arrange(desc(par)) %>% 
@@ -396,9 +400,10 @@ ev_model <- lm(salary ~ par, par)
 
 
 #par$ev <- par$par*2.118+4.840
-par$ev <- par$par*2.583+10.355
+par$ev <- par$par*3.385+5.154
 
-par$surplus <- par$ev - par$salary
+par$surplus <- round(par$ev - par$salary,1)
+par$ev <- round(par$ev,1)
 ```
 
 
@@ -409,6 +414,7 @@ par %>%
   #filter(IP>0) %>% 
   filter(billikenTeam == "Blue Socks") %>% 
   relocate(surplus, .after = par) %>% 
+  relocate(ev, .after = par) %>% 
   arrange(desc(par)) 
   #arrange(surplus) 
 
@@ -425,11 +431,74 @@ Build form for draft picks with projected standings
 
 ```{r}
 par %>% 
-  filter(is.na(billikenTeam)) %>% 
+  #filter(is.na(Owner) & !is.na(billikenTeam)) %>% 
+  #filter(IP>0) %>% 
+  filter(billikenTeam == "Westside Marauders") %>% 
   relocate(surplus, .after = par) %>% 
-  #filter(IP > 0 ) %>% 
+  relocate(ev, .after = par) %>% 
   arrange(desc(par)) 
-  #arrange(desc(surplus)) 
+  #arrange(surplus) 
 
 ```
+
+```{r}
+#Projected freezes
+cut_blue <- par %>% 
+  filter(billikenTeam == "Blue Socks") %>% 
+  filter(row_number(desc(ev)) <= 15L)
+
+cut_melon <- par %>% 
+  filter(billikenTeam == "Melonheads") %>% 
+  filter(row_number(desc(ev)) <= 15L)
+
+cut_erie <- par %>% 
+  filter(billikenTeam == "Erie Lakers") %>% 
+  filter(row_number(desc(ev)) <= 15L)
+
+cut_past <- par %>% 
+  filter(billikenTeam == "National Pastime") %>% 
+  filter(row_number(desc(ev)) <= 15L)
+
+cut_bigred <- par %>% 
+  filter(billikenTeam == "Big Red Machine") %>% 
+  filter(row_number(desc(ev)) <= 15L)
+
+cut_rebuild <- par %>% 
+  filter(billikenTeam == "Rebuilding Year") %>% 
+  filter(row_number(desc(ev)) <= 15L)
+
+cut_free <- par %>% 
+  filter(billikenTeam == "Free Birds") %>% 
+  filter(row_number(desc(ev)) <= 15L)
+
+cut_west <- par %>% 
+  filter(billikenTeam == "Westside Marauders") %>% 
+  filter(row_number(desc(ev)) <= 12L)
+
+cut_slug <- par %>% 
+  filter(billikenTeam == "Louisville Sluggers") %>% 
+  filter(row_number(desc(ev)) <= 11L)
+
+cut_hoos <- par %>% 
+  filter(billikenTeam == "Hoosiers") %>% 
+  filter(row_number(desc(ev)) <= 10L)
+
+projected_keepers <- rbind(cut_blue, cut_melon, cut_erie, cut_past, cut_bigred, cut_rebuild, cut_free, cut_west, cut_slug, cut_hoos)
+
+projected_keepers <- projected_keepers %>% 
+  select(Name, billikenTeam) %>% 
+  rename(keepingTeam = billikenTeam) 
+
+projected_keepers
+
+```
+
+```{r}
+par %>% 
+  left_join(projected_keepers, by = join_by(Name)) %>% 
+  filter(is.na(keepingTeam)) %>% 
+  relocate(ev, .after = par) %>% 
+  arrange(desc(ev)) 
+```
+
 
