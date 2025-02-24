@@ -15,6 +15,7 @@ library(fuzzyjoin)
 gs4_deauth()
 
 #Pull pre-draft data
+#If you created a new google sheet, don't forget to change sharing permissions to "anyone with the link can edit" or you will get Oauth errors
 frozen_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1871666303#gid=1871666303", sheet = "FrozenRosters", col_types = 'cccccc')
 draft <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1008004729#gid=1008004729", sheet = "Draft", col_types = 'ciiicccccc')
 salaries <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1123952567#gid=1123952567", sheet = "Salaries", col_types = 'ccc') %>% 

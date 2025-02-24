@@ -10,39 +10,30 @@ library(tidyverse)
 library(googlesheets4)
 library(fuzzyjoin)
 
-gs4_auth() 
-
 ```
-
-Import google sheets of Billiken League data
 ```{r}
-
-gs4_deauth()
-
-(frozen_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1kMYiBTInNR3qEcyXtADD0CX7LH7dddzHF3ovbk-cWqw/edit#gid=212188698", sheet = "Frozen Rosters '24", col_types = 'cccccc'))
-
-(draft <- read_sheet("https://docs.google.com/spreadsheets/d/1kMYiBTInNR3qEcyXtADD0CX7LH7dddzHF3ovbk-cWqw/edit#gid=212188698", sheet = "Draft '24", col_types = 'ciiiccccccccccccccc'))
-
-(salaries <- read_sheet("https://docs.google.com/spreadsheets/d/1kMYiBTInNR3qEcyXtADD0CX7LH7dddzHF3ovbk-cWqw/edit#gid=212188698", sheet = "Salaries '24", col_types = 'ccc') %>% 
+#Pull pre-draft data
+#If you created a new google sheet, don't forget to change sharing permissions to "anyone with the link can edit" or you will get Oauth errors
+frozen_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1871666303#gid=1871666303", sheet = "FrozenRosters", col_types = 'cccccc')
+draft <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1008004729#gid=1008004729", sheet = "Draft", col_types = 'ciiicccccc')
+salaries <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1123952567#gid=1123952567", sheet = "Salaries", col_types = 'ccc') %>% 
     rename(new_salary = Salary)  %>% 
-  filter(!is.na(Player)) %>%  
+    filter(!is.na(Player)) %>%  
     mutate(across(c("new_salary"), ~gsub("\\$", "", .) %>% as.numeric))
-  )
-
-(positions <- suppressWarnings(read_sheet("https://docs.google.com/spreadsheets/d/1E-MsV8UEWyL3zv7ybS6a40l0sxIu7dmah2bhaBJaLNw/edit#gid=0", sheet = "Positions", col_types = 'ciiiiiiiiiii') %>% 
+positions <- suppressWarnings(read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=605162437#gid=605162437", sheet = "Positions", col_types = 'ciiiiiiiiiii') %>% 
     mutate(PLAYER = gsub("\n.*","",PLAYER)) %>% 
-  mutate(PLAYER = gsub("DTD.*","",PLAYER)) %>%
+    mutate(PLAYER = gsub("DTD.*","",PLAYER)) %>%
     mutate(p_of = case_when(RF == 1 ~ 1, CF == 1 ~ 1, LF == 1 ~ 1, .default = 0)) %>%
     mutate(p_ci = case_when(`1B` == 1 ~ 1, `3B` == 1 ~ 1, .default = 0)) %>%
     mutate(p_mi = case_when(`2B` == 1 ~ 1, SS == 1 ~ 1, .default = 0)) %>%  
     rename(player = PLAYER, p_c = C, p_1b = `1B`, p_2b = `2B`, p_3b = `3B`, p_ss = SS, p_dh = DH) %>% 
-    select(player, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh)
-  ))
-
+    select(player, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh))
 ```
 
-```{r}
 
+If rosters are NOT frozen: 
+```{r}
+#Clean up tables and join
 frozen_rosters_clean <- frozen_rosters %>% 
   rename(billikenTeam = Owner, player = Player, contract = Contract, salary = Salary) %>% 
   mutate(across(c("salary"), ~gsub("\\$", "", .) %>% as.numeric), contract = contract %>% as.numeric, billikenTeam = str_to_title(billikenTeam)) %>% 
@@ -58,65 +49,60 @@ rosters <- bind_rows(frozen_rosters_clean,draft_clean)
 rosters <- rosters %>% 
   filter(!is.na(player))
 
-#rosters %>% filter(billikenTeam == "Blue Socks")
+rosters
+```
 
+If rosters are frozen: 
+```{r}
+#Clean up tables and join
+frozen_rosters_clean <- frozen_rosters %>% 
+  rename(billikenTeam = Owner, player = Player, contract = Contract, salary = Salary) %>% 
+  mutate(across(c("salary"), ~gsub("\\$", "", .) %>% as.numeric), contract = contract %>% as.numeric, billikenTeam = str_to_title(billikenTeam)) %>% 
+  select(player, billikenTeam, contract, salary)
+
+draft_clean <- draft %>%
+  rename(player = "Player...1", billikenTeam = Team, salary = Salary) %>% 
+  mutate(contract = 1, salary = salary %>% as.numeric) %>% 
+  select(player, billikenTeam, contract, salary)
+
+rosters <- bind_rows(frozen_rosters_clean,draft_clean) 
+
+rosters <- rosters %>% 
+  filter(!is.na(player))
+
+rosters
 ```
 
 
-
-
-Load FanGraphs Depth Charts Projections files
 ```{r}
-hitter_projections <- read_csv("./DraftAssistant/hitter_projections_2024.csv") 
+#Load FanGraphs projections downloaded locally
+hitter_projections <- read_csv("hitter_projections_2025.csv") %>% 
+  mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
+pitcher_projections <- read_csv("pitcher_projections_2025.csv") %>% 
+  mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
 
-pitcher_projections <- read_csv("./DraftAssistant/pitcher_projections_2024.csv")
-
-hitter_projections
-pitcher_projections
-
-```
-
-
-Filter out non-player rows
-```{r}
-(rosters <- rosters %>% 
-  filter(!is.na(player)))
-```
-
-
-Merge projections with pre-freeze rosters
-
-```{r}
 hitter_projections_nl <- hitter_projections %>% 
-#Find NL projections only
+  #Find NL projections only
   filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
-  #left_join(prefreeze_rosters, join_by('Name'=='player')) 
   stringdist_left_join(rosters, by = c("Name" = "player"), max_dist = 2)
 
 pitcher_projections_nl <- pitcher_projections %>% 
-#Find NL projections only
+  #Find NL projections only
   filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
-  #left_join(prefreeze_rosters, join_by('Name'=='player')) 
   stringdist_left_join(rosters, by = c("Name" = "player"), max_dist = 2)
-
-
 ```
 
-Team Totals
+
 ```{r}
-(hitter_team_totals <- hitter_projections_nl %>% 
-   group_by(billikenTeam) %>% 
-   summarize(n=n(), salary = sum(salary), PA = sum(PA), AB = sum(AB), H = sum(H), HR = sum(HR), R = sum(R), RBI = sum(RBI), SB = sum(SB), AVG = sum(H)/sum(AB)))
+#Combined totals from pre-freeze rosters
+hitter_team_totals <- hitter_projections_nl %>% 
+    group_by(billikenTeam) %>% 
+    summarize(n=n(), salary = sum(salary), PA = sum(PA), AB = sum(AB), H = sum(H), HR = sum(HR), R = sum(R), RBI = sum(RBI), SB = sum(SB), AVG = sum(H)/sum(AB))
+pitcher_team_totals <- pitcher_projections_nl %>% 
+    group_by(billikenTeam) %>% 
+    summarize(n=n(), salary = sum(salary), W = sum(W), SV = sum(SV), IP = sum(IP), SO = sum(SO), ER = sum(ER), H = sum(H), BB = sum(BB), ERA = sum(ER)*9/sum(IP), WHIP = (sum(H)+sum(BB))/sum(IP))
 
 
-(pitcher_team_totals <- pitcher_projections_nl %>% 
-  group_by(billikenTeam) %>% 
-  summarize(n=n(), salary = sum(salary), W = sum(W), SV = sum(SV), IP = sum(IP), SO = sum(SO), ER = sum(ER), H = sum(H), BB = sum(BB), ERA = sum(ER)*9/sum(IP), WHIP = (sum(H)+sum(BB))/sum(IP)) )
-
-
-```
-Team Standings
-```{r}
 #Rank Team Totals
 n_teams <- pull(count(hitter_team_totals %>% filter(!is.na(billikenTeam)) %>% distinct(billikenTeam)))
 
@@ -127,6 +113,12 @@ hitter_points <- hitter_team_totals %>%
   mutate(hit = hr + r + rbi + sb + avg) %>% 
   arrange(desc(hit))
 
+hitter_points
+```
+
+
+```{r}
+
 pitcher_points <- pitcher_team_totals %>% 
   filter(!is.na(billikenTeam)) %>% 
   mutate(w = n_teams+1 - dense_rank(desc(W)), sv = n_teams+1 - dense_rank(desc(SV)), so = n_teams+1 - dense_rank(desc(SO)), era = n_teams+1 - dense_rank(ERA), whip = n_teams+1 - dense_rank(WHIP)) %>%
@@ -134,23 +126,8 @@ pitcher_points <- pitcher_team_totals %>%
   mutate(pit = w + sv + so + era + whip) %>% 
   arrange(desc(pit))
 
-```
 
-
-Project category variability
-```{r}
-ggplot(hitter_points, aes(HR, hr_pct)) +
-  geom_point() +
-  stat_smooth(method="glm", method.args = list(family=binomial))
-
-ggplot(pitcher_points, aes(ERA, era_pct)) +
-  geom_point() +
-  stat_smooth(method="glm", method.args = list(family=binomial))
-
-```
-
-Fit logistic regression curves
-```{r}
+#Continuous models of hitting categories
 hr_model_glm <- glm(hr_pct ~ HR, data = hitter_points, family = "binomial")
 hitter_points$hr_pts_pred = predict(hr_model_glm, hitter_points, type="response")*n_teams
 
@@ -169,13 +146,8 @@ hitter_points$avg_pts_pred = predict(hr_model_glm, hitter_points, type="response
 hitter_points <- hitter_points %>% 
   mutate(hitter_points_pred = hr_pts_pred + r_pts_pred + rbi_pts_pred + sb_pts_pred + avg_pts_pred)
 
-hitter_points
 
-#instead of running this on teams, run this for every potential drafted player to project points impact of each player based on the current composition of each roster
-
-```
-
-```{r}
+#Continuous models of pitching categories
 
 w_model_glm <- glm(w_pct ~ W, data = pitcher_points, family = "binomial")
 pitcher_points$w_pts_pred = predict(w_model_glm, pitcher_points, type="response")*n_teams
@@ -192,29 +164,22 @@ pitcher_points$era_pts_pred = predict(era_model_glm, pitcher_points, type="respo
 whip_model_glm <- glm(whip_pct ~ WHIP, data = pitcher_points, family = "binomial")
 pitcher_points$whip_pts_pred = predict(whip_model_glm, pitcher_points, type="response")*n_teams
 
-(pitcher_points <- pitcher_points %>% 
-  mutate(pitcher_points_pred = w_pts_pred + sv_pts_pred + so_pts_pred + era_pts_pred + whip_pts_pred) %>% 
-    arrange(desc(pitcher_points_pred)))
-```
+pitcher_points <- pitcher_points %>% 
+    mutate(pitcher_points_pred = w_pts_pred + sv_pts_pred + so_pts_pred + era_pts_pred + whip_pts_pred) %>% 
+    arrange(desc(pitcher_points_pred))
 
-```{r}
 projected_standings <- hitter_points %>% 
   inner_join(pitcher_points, by = join_by(billikenTeam)) %>% 
   mutate(total = round(hitter_points_pred + pitcher_points_pred,1), players = n.x + n.y) %>% 
   mutate(across(ends_with("_pts_pred"), \(x) round(x, 1))) %>% 
   mutate(salary = salary.x + salary.y) %>% 
-  select(billikenTeam, players, total, salary, hr_pts_pred, r_pts_pred, rbi_pts_pred, sb_pts_pred, avg_pts_pred, w_pts_pred, sv_pts_pred, so_pts_pred, era_pts_pred, whip_pts_pred) %>% 
+  select(billikenTeam, players, salary, total, hr_pts_pred, r_pts_pred, rbi_pts_pred, sb_pts_pred, avg_pts_pred, w_pts_pred, sv_pts_pred, so_pts_pred, era_pts_pred, whip_pts_pred) %>% 
   arrange(desc(total)) 
 
 projected_standings <- projected_standings %>% 
   rename(hr = hr_pts_pred, r = r_pts_pred, rbi = rbi_pts_pred, sb = sb_pts_pred, avg = avg_pts_pred, w = w_pts_pred, sv = sv_pts_pred,  so = so_pts_pred, era = era_pts_pred, whip = whip_pts_pred)
 
-```
-
-Player projected point impact (average, not situation-based)
-
-Simple linear model by category
-```{r}
+#Calculate and assign category point values
 hr_model <- lm(hr ~ HR, hitter_points) 
 r_model <- lm(r ~ R, hitter_points) 
 rbi_model <- lm(rbi ~ RBI, hitter_points) 
@@ -246,70 +211,23 @@ melonheads_ip <- pull(pitcher_team_totals %>% filter(billikenTeam == "Melonheads
 melonheads_er <- pull(pitcher_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(ER))
 melonheads_wh <- pull(pitcher_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(BB)) + pull(pitcher_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(H))
 
-```
-
-Build list of project draft value
-```{r}
-#List of available players
-hitter_projections_nl %>% 
-  filter(is.na(billikenTeam)) %>% 
-  mutate(AVG = round(AVG,3)) %>% 
-  mutate(point_value = round(HR * hr_factor + R * r_factor + RBI * rbi_factor + SB * sb_factor + avg_factor * ((melonheads_h + H)/(melonheads_ab + AB) - melonheads_h/melonheads_ab),1)) %>%  
-  select(Name, Team, PA, HR, R, RBI, SB, AVG, point_value) %>% 
-  arrange(desc(point_value))
-
-```
-
-```{r}
 hitter_projections_nl <- hitter_projections_nl %>% 
   mutate(point_value = round(HR * hr_factor + R * r_factor + RBI * rbi_factor + SB * sb_factor + avg_factor * ((melonheads_h + H)/(melonheads_ab + AB) - melonheads_h/melonheads_ab),1))
 
 pitcher_projections_nl <- pitcher_projections_nl %>% 
   mutate(point_value = round(W * w_factor + SV * sv_factor + SO * so_factor + era_factor * (9*(melonheads_er + ER)/(melonheads_ip + IP) - 9*melonheads_er/melonheads_ip) + whip_factor * ((melonheads_wh + BB + H)/(melonheads_ip + IP) - melonheads_wh/melonheads_ip),1))
 
-```
-
-
-```{r}
-bind_rows(hitter_projections_nl, pitcher_projections_nl) %>% 
-  filter(billikenTeam == "Melonheads") %>% 
-  mutate(AVG = round(AVG,3), ERA = round(ERA,2), WHIP = round(WHIP,2)) %>%  
-  select(Name, Team, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, point_value) %>% 
-  arrange(desc(point_value))
-
-```
-
-All projected players with billiken league details
-```{r}
+#Combined available player list
 projected_players <- bind_rows(hitter_projections_nl, pitcher_projections_nl) %>% 
   filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
   stringdist_left_join(positions, by = c("Name" = "player"), max_dist = 2) %>% 
   stringdist_left_join(salaries, by = c("Name" = "Player"), max_dist = 2) %>% 
   mutate(AVG = round(AVG,3), ERA = round(ERA,2), WHIP = round(WHIP,2), SO = case_when(IP == 0 ~ NA, IP > 0 ~ SO)) %>%  
-  mutate(HR = case_when(PA == 0 ~ NA, PA > 0 ~ HR), R = case_when(PA == 0 ~ NA, PA > 0 ~ R)) %>% 
+  mutate(HR = case_when(PA == 0 ~ NA, PA > 0 ~ HR), R = case_when(PA == 0 ~ NA, PA > 0 ~ R), AVG = case_when(PA == 0 ~ NA, PA > 0 ~ AVG)) %>% 
   mutate(salary = coalesce(salary,coalesce(new_salary,1)), contract = coalesce(contract,1)) %>% 
   select(Name, billikenTeam, contract, salary, Team, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, point_value, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh) %>% 
   arrange(desc(point_value))
 
-projected_players
-
-```
-
-Replacement level example plot
-```{r}
-pos <- projected_players %>% 
-  filter(p_c == 1) %>% 
-  mutate(rank_c = row_number(desc(point_value)))
-
-ggplot(pos, aes(x=rank_c, y=point_value)) +
-  geom_point() +
-  geom_vline(xintercept = 21, color = "red")
-```
-
-
-Calculate replacement level by position (with no shared positions)
-
-```{r}
 rl_c <- projected_players %>% 
   filter(p_c == 1) %>% 
   filter(row_number(desc(point_value)) == 21L) %>% 
@@ -381,70 +299,18 @@ rl_p_value <- pull(rl_p %>% select(point_value))
 rl_c_value <- pull(rl_c %>% select(point_value))
 rl_util_value <- pull(rl_util %>% select(point_value))
 
-```
-Note - multiposition players not totally clean here. 
-
-Assume that we use the lowest replacement level of any position a player qualifies for.
-
-
-Points Above Replacement
-```{r}
 par <- projected_players %>% 
   mutate(repl = case_when(IP > 0 ~ rl_p_value, 
                           p_c == 1 ~ rl_c_value,
                           .default = rl_util_value)
-         ) %>% 
+  ) %>% 
   mutate(par = point_value - repl) %>% 
   arrange(desc(par)) %>% 
-  select(Name, Team, billikenTeam, contract, salary, point_value, repl, par, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh)
-
-par
-```
-
-```{r}
-ggplot(par, aes(par,salary)) +
-  geom_point() +
-  geom_smooth(method="lm")
-
-ev_model <- lm(salary ~ par, par) 
-
-par$ev <- par$par*2.118+4.840
-
-par$surplus <- par$ev - par$salary
-```
+  select(Name, Team, billikenTeam, contract, salary, point_value, par, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh)
 
 
-Projections by Billiken Team
-```{r}
-par %>% 
-  #filter(is.na(Owner) & !is.na(billikenTeam)) %>% 
-  #filter(IP>0) %>% 
-  #filter(billikenTeam == "Ben's Brilliant Team") %>% 
-  filter(Name == "Nick Lodolo")
-  relocate(surplus, .after = par) %>% 
-  arrange(desc(par)) 
-  #arrange(surplus) 
+# Define server logic required to draw a histogram
+function(input, output, session) {
+  
 
 ```
-
-Project/simulate draft
-- Project/simulate next draft pick
-
-Factor in salaries and cap
-
-```{r}
-par %>% 
-  filter(is.na(billikenTeam)) %>% 
-  relocate(surplus, .after = par) %>% 
-  #filter(IP > 0 ) %>% 
-  arrange(desc(par)) 
-  #arrange(desc(surplus)) 
-
-```
-
-```{r}
-projected_players %>% 
-  filter(Name == "Luis García Jr.") %>% 
-  mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
-```
-
