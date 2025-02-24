@@ -15,13 +15,13 @@ library(fuzzyjoin)
 gs4_deauth()
 
 #Pull pre-draft data
-frozen_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1871666303#gid=1871666303", sheet = "FrozenRosters", col_types = 'cccccc')
-draft <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1008004729#gid=1008004729", sheet = "Draft", col_types = 'ciiicccccc')
-salaries <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1123952567#gid=1123952567", sheet = "Salaries", col_types = 'ccc') %>% 
+frozen_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1E-MsV8UEWyL3zv7ybS6a40l0sxIu7dmah2bhaBJaLNw/edit#gid=212188698", sheet = "FrozenRosters", col_types = 'cccccc')
+draft <- read_sheet("https://docs.google.com/spreadsheets/d/1E-MsV8UEWyL3zv7ybS6a40l0sxIu7dmah2bhaBJaLNw/edit#gid=212188698", sheet = "Draft", col_types = 'ciiicccccc')
+salaries <- read_sheet("https://docs.google.com/spreadsheets/d/1E-MsV8UEWyL3zv7ybS6a40l0sxIu7dmah2bhaBJaLNw/edit#gid=212188698", sheet = "Salaries", col_types = 'ccc') %>% 
     rename(new_salary = Salary)  %>% 
     filter(!is.na(Player)) %>%  
     mutate(across(c("new_salary"), ~gsub("\\$", "", .) %>% as.numeric))
-positions <- suppressWarnings(read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=605162437#gid=605162437", sheet = "Positions", col_types = 'ciiiiiiiiiii') %>% 
+positions <- suppressWarnings(read_sheet("https://docs.google.com/spreadsheets/d/1E-MsV8UEWyL3zv7ybS6a40l0sxIu7dmah2bhaBJaLNw/edit#gid=0", sheet = "Positions", col_types = 'ciiiiiiiiiii') %>% 
     mutate(PLAYER = gsub("\n.*","",PLAYER)) %>% 
     mutate(PLAYER = gsub("DTD.*","",PLAYER)) %>%
     mutate(p_of = case_when(RF == 1 ~ 1, CF == 1 ~ 1, LF == 1 ~ 1, .default = 0)) %>%
@@ -47,9 +47,9 @@ rosters <- rosters %>%
   filter(!is.na(player))
 
 #Load FanGraphs projections downloaded locally
-hitter_projections <- read_csv("hitter_projections_2025.csv") %>% 
+hitter_projections <- read_csv("hitter_projections_2024.csv") %>% 
   mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
-pitcher_projections <- read_csv("pitcher_projections_2025.csv") %>% 
+pitcher_projections <- read_csv("pitcher_projections_2024.csv") %>% 
   mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
 
 hitter_projections_nl <- hitter_projections %>% 
