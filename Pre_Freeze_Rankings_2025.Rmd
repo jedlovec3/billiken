@@ -271,8 +271,8 @@ projected_players <- bind_rows(hitter_projections, pitcher_projections) %>%
   filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
   stringdist_left_join(prefreeze_rosters, by = c("Name" = "player"), max_dist = 2) %>% 
   stringdist_left_join(positions, by = c("Name" = "player"), max_dist = 2) %>% 
-  #stringdist_left_join(salaries, by = c("Name" = "Player"), max_dist = 2) %>% 
-  #mutate(salary = case_when(!is.na(billikenTeam) ~ salary, TRUE ~ new_salary)) %>% 
+  stringdist_left_join(salaries, by = c("Name" = "Player"), max_dist = 2) %>% 
+  mutate(salary = case_when(!is.na(billikenTeam) ~ salary, TRUE ~ new_salary)) %>% 
   #filter(is.na(Owner) & !is.na(billikenTeam)) %>% 
   mutate(AVG = round(AVG,3), ERA = round(ERA,2), WHIP = round(WHIP,2), SO = case_when(IP == 0 ~ NA, IP > 0 ~ SO)) %>%  
   mutate(HR = case_when(PA == 0 ~ NA, PA > 0 ~ HR), R = case_when(PA == 0 ~ NA, PA > 0 ~ R), AVG = case_when(PA == 0 ~ NA, PA > 0 ~ AVG)) %>% 
@@ -433,11 +433,11 @@ Build form for draft picks with projected standings
 par %>% 
   #filter(is.na(Owner) & !is.na(billikenTeam)) %>% 
   #filter(IP>0) %>% 
-  filter(billikenTeam == "Westside Marauders") %>% 
+  filter(billikenTeam == "Blue Socks") %>% 
   relocate(surplus, .after = par) %>% 
   relocate(ev, .after = par) %>% 
   arrange(desc(par)) 
-  #arrange(surplus) 
+  #arrange(desc(surplus))
 
 ```
 
@@ -494,11 +494,47 @@ projected_keepers
 ```
 
 ```{r}
-par %>% 
+projected_draft_eligible <- par %>% 
   left_join(projected_keepers, by = join_by(Name)) %>% 
   filter(is.na(keepingTeam)) %>% 
   relocate(ev, .after = par) %>% 
   arrange(desc(ev)) 
+
+projected_draft_eligible <- 
+  projected_draft_eligible %>% 
+  mutate(pick = row_number())
+
+projected_draft_eligible
+
 ```
 
+
+```{r}
+# Reorder following the value of another column:
+ggplot(projected_draft_eligible, aes(x = reorder(pick, -ev), y = ev)) + 
+  geom_point() #+
+  #scale_x_discrete(breaks = levels(pick)[c(T, rep(F, 9))])
+  #scale_x_discrete(breaks=seq(1, 101, 10)) +
+  #scale_x_discrete() +
+  #xlim(1,110) #+
+  #theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) #+
+  #scale_x_continuous(
+    #breaks = seq(1, 101, 10)#,
+    #minor_breaks = seq(8.5, 35.5, 1)
+  #) 
+
+ggplot(projected_draft_eligible, aes(x = pick, y = ev)) + 
+  scale_x_continuous(breaks=seq(1, 101, 10)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  xlim(0,100) +
+  geom_smooth(formula = y ~ log(x)) +
+  geom_point()
+    
+```
+
+
+```{r}
+
+
+```
 
