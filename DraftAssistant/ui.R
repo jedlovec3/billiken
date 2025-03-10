@@ -25,7 +25,7 @@ fluidPage(
                   `Westside Marauders` = "Westside Marauders",
                   `Hoosiers` = "Hoosiers",
                   `Louisville Sluggers` = "Louisville Sluggers",
-                  `Rebuilding Year` = "Rebuilding Year",
+                  `Free At Last` = "Free At Last",
                   `Erie Lakers` = "Erie Lakers",
                   `Big Red Machine` = "Big Red Machine",
                   `National Pastime` = "National Pastime"
@@ -57,23 +57,3 @@ fluidPage(
 # #
 # #    http://shiny.rstudio.com/
 # #
-# 
-# library(shiny)
-# 
-# # Define UI for application that draws a histogram
-# fluidPage(
-#   
-#   # Application title
-#   titlePanel("Billiken League Draft Assistant"),
-#   
-#   mainPanel(
-#     dataTableOutput('available_players')
-#   ),
-#   
-#   sidebarPanel(
-#     dataTableOutput('projected_standings')
-#   )
-#   
-# )
-# 
-
