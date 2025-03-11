@@ -5,9 +5,9 @@ account: jedlovec3
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 11385599
-bundleId: 9916392
+bundleId: 9922278
 url: https://jedlovec3.shinyapps.io/DraftAssistant/
-when: 1741567930.85137
-lastSyncTime: 1741567930.85138
+when: 1741648492.14897
+lastSyncTime: 1741648492.14897
 asMultiple: FALSE
 asStatic: FALSE

@@ -17,6 +17,8 @@ gs4_deauth()
 #Pull pre-draft data
 #If you created a new google sheet, don't forget to change sharing permissions to "anyone with the link can edit" or you will get Oauth errors
 frozen_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1871666303#gid=1871666303", sheet = "FrozenRosters", col_types = 'cccccc')
+#frozen_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=0#gid=0", sheet = "PreFreezeRosters", col_types = 'ccccccc') %>% 
+#  rename(Owner = billikenTeam, Player = player, Contract = contract, Salary = salary)
 draft <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1008004729#gid=1008004729", sheet = "Draft", col_types = 'ciiicccccc')
 salaries <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1123952567#gid=1123952567", sheet = "Salaries", col_types = 'ccc') %>% 
     rename(new_salary = Salary)  %>% 
@@ -91,19 +93,19 @@ pitcher_points <- pitcher_team_totals %>%
 
 #Continuous models of hitting categories
 hr_model_glm <- glm(hr_pct ~ HR, data = hitter_points, family = "binomial")
-hitter_points$hr_pts_pred = predict(hr_model_glm, hitter_points, type="response")*n_teams
+hitter_points$hr_pts_pred = predict(hr_model_glm, hitter_points, type="response")*(n_teams-1) + 1
 
 r_model_glm <- glm(r_pct ~ R, data = hitter_points, family = "binomial")
-hitter_points$r_pts_pred = predict(r_model_glm, hitter_points, type="response")*n_teams
+hitter_points$r_pts_pred = predict(r_model_glm, hitter_points, type="response")*(n_teams-1) + 1
 
 rbi_model_glm <- glm(rbi_pct ~ RBI, data = hitter_points, family = "binomial")
-hitter_points$rbi_pts_pred = predict(rbi_model_glm, hitter_points, type="response")*n_teams
+hitter_points$rbi_pts_pred = predict(rbi_model_glm, hitter_points, type="response")*(n_teams-1) + 1
 
 sb_model_glm <- glm(sb_pct ~ SB, data = hitter_points, family = "binomial")
-hitter_points$sb_pts_pred = predict(sb_model_glm, hitter_points, type="response")*n_teams
+hitter_points$sb_pts_pred = predict(sb_model_glm, hitter_points, type="response")*(n_teams-1) + 1
 
 avg_model_glm <- glm(avg_pct ~ AVG, data = hitter_points, family = "binomial")
-hitter_points$avg_pts_pred = predict(hr_model_glm, hitter_points, type="response")*n_teams
+hitter_points$avg_pts_pred = predict(hr_model_glm, hitter_points, type="response")*(n_teams-1) + 1
 
 hitter_points <- hitter_points %>% 
   mutate(hitter_points_pred = hr_pts_pred + r_pts_pred + rbi_pts_pred + sb_pts_pred + avg_pts_pred)
@@ -112,19 +114,19 @@ hitter_points <- hitter_points %>%
 #Continuous models of pitching categories
 
 w_model_glm <- glm(w_pct ~ W, data = pitcher_points, family = "binomial")
-pitcher_points$w_pts_pred = predict(w_model_glm, pitcher_points, type="response")*n_teams
+pitcher_points$w_pts_pred = predict(w_model_glm, pitcher_points, type="response")*(n_teams-1) + 1
 
 sv_model_glm <- glm(sv_pct ~ SV, data = pitcher_points, family = "binomial")
-pitcher_points$sv_pts_pred = predict(sv_model_glm, pitcher_points, type="response")*n_teams
+pitcher_points$sv_pts_pred = predict(sv_model_glm, pitcher_points, type="response")*(n_teams-1) + 1
 
 so_model_glm <- glm(so_pct ~ SO, data = pitcher_points, family = "binomial")
-pitcher_points$so_pts_pred = predict(so_model_glm, pitcher_points, type="response")*n_teams
+pitcher_points$so_pts_pred = predict(so_model_glm, pitcher_points, type="response")*(n_teams-1) + 1
 
 era_model_glm <- glm(era_pct ~ ERA, data = pitcher_points, family = "binomial")
-pitcher_points$era_pts_pred = predict(era_model_glm, pitcher_points, type="response")*n_teams
+pitcher_points$era_pts_pred = predict(era_model_glm, pitcher_points, type="response")*(n_teams-1) + 1
 
 whip_model_glm <- glm(whip_pct ~ WHIP, data = pitcher_points, family = "binomial")
-pitcher_points$whip_pts_pred = predict(whip_model_glm, pitcher_points, type="response")*n_teams
+pitcher_points$whip_pts_pred = predict(whip_model_glm, pitcher_points, type="response")*(n_teams-1) + 1
 
 pitcher_points <- pitcher_points %>% 
     mutate(pitcher_points_pred = w_pts_pred + sv_pts_pred + so_pts_pred + era_pts_pred + whip_pts_pred) %>% 
@@ -160,8 +162,9 @@ rbi_factor = rbi_model$coefficients["RBI"]
 sb_factor = sb_model$coefficients["SB"]
 avg_factor = avg_model$coefficients["AVG"]
 
-melonheads_h <- pull(hitter_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(H))
-melonheads_ab <- pull(hitter_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(AB))
+baseline_ab <- 5000
+baseline_avg <- .255
+baseline_h <- baseline_ab*baseline_avg
 
 w_factor = w_model$coefficients["W"]
 sv_factor = sv_model$coefficients["SV"]
@@ -169,15 +172,17 @@ so_factor = so_model$coefficients["SO"]
 era_factor = era_model$coefficients["ERA"]
 whip_factor = whip_model$coefficients["WHIP"]
 
-melonheads_ip <- pull(pitcher_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(IP))
-melonheads_er <- pull(pitcher_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(ER))
-melonheads_wh <- pull(pitcher_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(BB)) + pull(pitcher_team_totals %>% filter(billikenTeam == "Melonheads") %>% select(H))
+baseline_ip <- 1200
+baseline_era <- 4.05
+baseline_whip <- 1.24
+baseline_er <- baseline_ip*baseline_era/9
+baseline_wh <- baseline_ip*baseline_whip
 
 hitter_projections_nl <- hitter_projections_nl %>% 
-  mutate(point_value = round(HR * hr_factor + R * r_factor + RBI * rbi_factor + SB * sb_factor + avg_factor * ((melonheads_h + H)/(melonheads_ab + AB) - melonheads_h/melonheads_ab),1))
+  mutate(point_value = round(HR * hr_factor + R * r_factor + RBI * rbi_factor + SB * sb_factor + avg_factor * ((baseline_h + H)/(baseline_ab + AB) - baseline_h/baseline_ab),1))
 
 pitcher_projections_nl <- pitcher_projections_nl %>% 
-  mutate(point_value = round(W * w_factor + SV * sv_factor + SO * so_factor + era_factor * (9*(melonheads_er + ER)/(melonheads_ip + IP) - 9*melonheads_er/melonheads_ip) + whip_factor * ((melonheads_wh + BB + H)/(melonheads_ip + IP) - melonheads_wh/melonheads_ip),1))
+  mutate(point_value = round(W * w_factor + SV * sv_factor + SO * so_factor + era_factor * (9*(baseline_er + ER)/(baseline_ip + IP) - 9*baseline_er/baseline_ip) + whip_factor * ((baseline_wh + BB + H)/(baseline_ip + IP) - baseline_wh/baseline_ip),1))
 
 #Combined available player list
 projected_players <- bind_rows(hitter_projections_nl, pitcher_projections_nl) %>% 
@@ -261,15 +266,21 @@ rl_p_value <- pull(rl_p %>% select(point_value))
 rl_c_value <- pull(rl_c %>% select(point_value))
 rl_util_value <- pull(rl_util %>% select(point_value))
 
-par <- projected_players %>% 
-  mutate(repl = case_when(IP > 0 ~ rl_p_value, 
-                          p_c == 1 ~ rl_c_value,
-                          .default = rl_util_value)
-  ) %>% 
-  mutate(par = point_value - repl) %>% 
-  arrange(desc(par)) %>% 
-  select(Name, Team, billikenTeam, contract, salary, point_value, par, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh)
 
+par <- projected_players %>% 
+  mutate(repl = case_when(IP > 0 ~ 0.9, 
+                          p_c == 1 ~ 0.4,
+                          p_3b == 1 ~ 1.1,
+                          p_of == 1 ~ 1.5,
+                          p_ci == 1 ~ 1.5,
+                          p_1b == 1 ~ 1.8,
+                          .default = 2.1)
+  ) %>% 
+  mutate(par = round(point_value - repl,1)) %>% 
+  mutate(`projected$` = round((point_value - repl)*3.567+2.666,1)) %>% 
+  mutate(surplus = round((point_value - repl)*3.567+2.666 - salary,1)) %>% 
+  arrange(desc(`projected$`)) %>% 
+  select(Name, Team, billikenTeam, contract, salary, point_value, par, `projected$`, surplus, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh)
 
 # Define server logic required to draw a histogram
 function(input, output, session) {
