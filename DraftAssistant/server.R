@@ -268,7 +268,7 @@ rl_util_value <- pull(rl_util %>% select(point_value))
 
 
 par <- projected_players %>% 
-  mutate(repl = case_when(IP > 0 ~ 0.9, 
+  mutate(repl = case_when(IP > 0 ~ 1.6, 
                           p_c == 1 ~ 0.4,
                           p_3b == 1 ~ 1.1,
                           p_of == 1 ~ 1.5,
@@ -297,7 +297,7 @@ function(input, output, session) {
       pageLength = 20,
       autoWidth = TRUE,
       scrollX = TRUE, 
-      columnDefs = list(list(targets=c(0), visible=TRUE, width='150')
+      columnDefs = list(list(targets=c(1), visible=TRUE, width='150')
       )
     )
   )
@@ -308,7 +308,7 @@ function(input, output, session) {
       pageLength = 10,
       autoWidth = TRUE,
       scrollX = TRUE, 
-      columnDefs = list(list(targets=c(0), visible=TRUE, width='50'))
+      columnDefs = list(list(targets=c(1), visible=TRUE, width='50'))
     )
   )
  

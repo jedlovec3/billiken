@@ -378,7 +378,7 @@ Assume that we use the lowest replacement level of any position a player qualifi
 Points Above Replacement
 ```{r}
 par <- projected_players %>% 
-  mutate(repl = case_when(IP > 0 ~ 0.9, 
+  mutate(repl = case_when(IP > 0 ~ 1.6, 
                           p_c == 1 ~ 0.4,
                           p_3b == 1 ~ 1.1,
                           p_of == 1 ~ 1.5,

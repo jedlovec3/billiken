@@ -20,12 +20,12 @@ fluidPage(
                  list(
                   `Available` = "Available",
                   `Melonheads` = "Melonheads",
+                  `Free At Last` = "Free At Last",
                   `Blue Socks` = "Blue Socks",
                   `Free Birds` = "Free Birds",
                   `Westside Marauders` = "Westside Marauders",
                   `Hoosiers` = "Hoosiers",
                   `Louisville Sluggers` = "Louisville Sluggers",
-                  `Free At Last` = "Free At Last",
                   `Erie Lakers` = "Erie Lakers",
                   `Big Red Machine` = "Big Red Machine",
                   `National Pastime` = "National Pastime"
