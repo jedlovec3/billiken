@@ -268,13 +268,17 @@ rl_util_value <- pull(rl_util %>% select(point_value))
 
 
 par <- projected_players %>% 
-  mutate(repl = case_when(IP > 0 ~ 1.6, 
-                          p_c == 1 ~ 0.4,
-                          p_3b == 1 ~ 1.1,
-                          p_of == 1 ~ 1.5,
-                          p_ci == 1 ~ 1.5,
-                          p_1b == 1 ~ 1.8,
-                          .default = 2.1)
+  mutate(repl = case_when(IP > 0 ~ 3.1, 
+                          p_c == 1 ~ 1.2,
+                          p_1b == 1 ~ 3.0,
+                          p_2b == 1 ~ 3.2,
+                          p_3b == 1 ~ 2.4,
+                          p_ss == 1 ~ 3.6,
+                          p_of == 1 ~ 2.3,
+                          p_ci == 1 ~ 2.6,
+                          p_mi == 1 ~ 3.2,
+                          #p_dh == 1 ~ 1.8,
+                          .default = 3.7)
   ) %>% 
   mutate(par = round(point_value - repl,1)) %>% 
   mutate(`projected$` = round((point_value - repl)*3.567+2.666,1)) %>% 
@@ -296,9 +300,9 @@ function(input, output, session) {
     options = list(
       pageLength = 20,
       autoWidth = TRUE,
-      scrollX = TRUE, 
-      columnDefs = list(list(targets=c(1), visible=TRUE, width='150')
-      )
+      scrollX = TRUE#, 
+      #columnDefs = list(list(targets = 1, width='150px')
+      #)
     )
   )
   
@@ -307,8 +311,9 @@ function(input, output, session) {
     options = list(
       pageLength = 10,
       autoWidth = TRUE,
-      scrollX = TRUE, 
-      columnDefs = list(list(targets=c(1), visible=TRUE, width='50'))
+      scrollX = TRUE#, 
+      #columnDefs = list(list(targets = 1, width='50px'))
+      #columnDefs = list(list(targets = 1, visible=TRUE, width='50px'))
     )
   )
  

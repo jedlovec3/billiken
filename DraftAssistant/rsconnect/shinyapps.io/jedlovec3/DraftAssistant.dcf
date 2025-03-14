@@ -5,7 +5,8 @@ account: jedlovec3
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 11385599
-bundleId: 9923778
+bundleId: 9940805
 url: https://jedlovec3.shinyapps.io/DraftAssistant/
 asMultiple: FALSE
 asStatic: FALSE
+ignoredFiles: hitter_projections_2024.csv|hitter_projections_20240315.csv|hitter_projections_2026.csv|hitter_projections_2027.csv|pitcher_projections_2024.csv|pitcher_projections_20240315.csv|pitcher_projections_2026.csv|pitcher_projections_2027.csv|server 2024.R|ui 2024.R

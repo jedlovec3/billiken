@@ -10,7 +10,10 @@
 library(shiny)
 
 fluidPage(
-
+  
+  tags$head(
+    tags$style(HTML("table {table-layout: fixed;"))
+  ),
     # Application title
     titlePanel("Billiken League Draft Assistant"),
 
@@ -39,11 +42,11 @@ fluidPage(
       ),
       
       
-      dataTableOutput('players')
+      DT::DTOutput('players')
     ),
 
     sidebarPanel(
-    dataTableOutput('projected_standings')
+      DT::DTOutput('projected_standings')
      )
         
 )
