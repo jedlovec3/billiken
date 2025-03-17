@@ -358,11 +358,46 @@ simulation_player_pool
 
 team_position_tibble
 
+f_calculate_standings()
+
+simulated_standings
+
+```
+
+Calculate simulated standings
+```{r}
+
+
+f_calculate_standings <- function(i = 1) {
+
 #summarize results
 
-simulation_player_pool %>% 
+simulated_team_totals <- simulation_player_pool %>% 
+  filter(!is.na(billikenTeam)) %>% 
   group_by(billikenTeam) %>% 
-  summarize(n=n(), PA = sum(PA, na.rm=TRUE), AB = sum(AB, na.rm=TRUE), H = sum(AB*AVG, na.rm=TRUE), HR = sum(HR, na.rm=TRUE), R = sum(R, na.rm=TRUE), RBI = sum(RBI, na.rm=TRUE), SB = sum(SB, na.rm=TRUE), AVG = sum(AB*AVG, na.rm=TRUE)/sum(AB, na.rm=TRUE), W = sum(W, na.rm=TRUE), SV = sum(SV, na.rm=TRUE), IP = sum(IP, na.rm=TRUE), SO = sum(SO, na.rm=TRUE), ER = sum(IP*ERA/9, na.rm=TRUE), ERA = sum(IP*ERA/9, na.rm=TRUE)*9/sum(IP, na.rm=TRUE), WHIP = (sum(WHIP*IP, na.rm=TRUE))/sum(IP, na.rm=TRUE))
+  #summarize(salary = sum(salary), point_value, par, ev, surplus)
+  summarise(n=n(), across(c("salary","point_value","par","ev","surplus"), ~ sum(.x, na.rm = TRUE)), PA = sum(PA, na.rm=TRUE), AB = sum(AB, na.rm=TRUE), H = sum(H, na.rm=TRUE), HR = sum(HR, na.rm=TRUE), R = sum(R, na.rm=TRUE), RBI = sum(RBI, na.rm=TRUE), SB = sum(SB, na.rm=TRUE), AVG = sum(H, na.rm=TRUE)*1.0/sum(AB, na.rm=TRUE), W = sum(W, na.rm=TRUE), SV = sum(SV, na.rm=TRUE), IP = sum(IP, na.rm=TRUE), SO = sum(SO, na.rm=TRUE), ER = sum(ER, na.rm=TRUE), ERA = sum(ER, na.rm=TRUE)*9/sum(IP, na.rm=TRUE), WHIP = (sum(WH, na.rm=TRUE))/sum(IP, na.rm=TRUE)) 
+
+simulation_standings <- simulated_team_totals %>% 
+  mutate(hr = n_teams+1 - dense_rank(desc(HR)), r = n_teams+1 - dense_rank(desc(R)), rbi = n_teams+1 - dense_rank(desc(RBI)), sb = n_teams+1 - dense_rank(desc(SB)), avg = n_teams+1 - dense_rank(desc(AVG))) %>% 
+  mutate(w = n_teams+1 - dense_rank(desc(W)), sv = n_teams+1 - dense_rank(desc(SV)), so = n_teams+1 - dense_rank(desc(SO)), era = n_teams+1 - dense_rank(ERA), whip = n_teams+1 - dense_rank(WHIP)) %>%
+  mutate(hit = hr + r + rbi + sb + avg) %>% 
+  mutate(pit = w + sv + so + era + whip) %>% 
+  mutate(total_points = hit + pit) %>% 
+  mutate(total_points_rank = dense_rank(desc(total_points))) %>% 
+  mutate(sim_num = i) %>% 
+  relocate(sim_num, .before = billikenTeam) %>% 
+  arrange(desc(total_points_rank))
+
+
+ if (i == 1) {
+   simulated_standings <<- simulation_standings
+ } else {
+   simulated_standings <<- bind_rows(simulated_standings,simulation_standings)
+ }
+
+}
+
 
 ```
 
@@ -370,30 +405,27 @@ simulation_player_pool %>%
 Function to simulate multiple drafts
 ```{r}
 
-simulation_player_pool <- par
+  for (i in 1:100) {
 
-my_function <- function(fname, lname) {
-  paste(fname, lname)
-  
-  f_fill_rosters_w_taken_players
-  
-}
+    print(paste("Starting simulation #",i))
+    
+  suppressWarnings({ 
+    
+    f_load_draft_order()
+    
+    f_simulate_draft()
+    
+    f_calculate_standings(i)
+    
+    })
 
-my_function("Peter", "Griffin")
+  }
 
+simulated_standings %>% 
+  group_by(billikenTeam) %>% 
+  summarize(n = n(), wins = sum(case_when(total_points_rank==1 ~ 1, .default = 0) ), across(everything(), mean)) %>% 
+  arrange(total_points_rank)
 
 ```
 
-
-Simulate multiple drafts
-```{r}
-
-
-  for (i in 1:10) {
-    
-    
-    
-    }
-
-```
 

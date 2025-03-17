@@ -291,7 +291,9 @@ projected_players <- bind_rows(hitter_projections, pitcher_projections) %>%
   #filter(is.na(Owner) & !is.na(billikenTeam)) %>% 
   mutate(AVG = round(AVG,3), ERA = round(ERA,2), WHIP = round(WHIP,2), SO = case_when(IP == 0 ~ NA, IP > 0 ~ SO)) %>%  
   mutate(HR = case_when(PA == 0 ~ NA, PA > 0 ~ HR), R = case_when(PA == 0 ~ NA, PA > 0 ~ R), AVG = case_when(PA == 0 ~ NA, PA > 0 ~ AVG)) %>% 
-  select(Name, billikenTeam, contract, salary, Team, PA, AB, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, point_value, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh, p_util) %>% 
+  mutate(WH = WHIP*IP) %>% 
+  mutate(H = ifelse(PA>0,H,0)) %>% 
+  select(Name, billikenTeam, contract, salary, Team, PA, AB, H, HR, R, RBI, SB, AVG, IP, WH, ER, W, SV, SO, ERA, WHIP, point_value, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh, p_util) %>% 
   arrange(desc(point_value)) #%>% 
   #filter(billikenTeam == "Melonheads") 
 
@@ -407,7 +409,7 @@ par <- projected_players %>%
          ) %>% 
   mutate(par = point_value - repl) %>% 
   arrange(desc(par)) %>% 
-  select(Name, Team, billikenTeam, contract, salary, point_value, repl, par, PA, AB, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh, p_util)
+  select(Name, Team, billikenTeam, contract, salary, point_value, repl, par, PA, AB, H, HR, R, RBI, SB, AVG, IP, ER, WH, H, W, SV, SO, ERA, WHIP, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh, p_util)
 
 par
 ```
