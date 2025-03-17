@@ -298,11 +298,11 @@ function(input, output, session) {
   output$players <- renderDataTable(
     selected_players(), 
     options = list(
-      pageLength = 20,
+      pageLength = 50,
       autoWidth = TRUE,
-      scrollX = TRUE#, 
-      #columnDefs = list(list(targets = 1, width='150px')
-      #)
+      scrollX = TRUE, 
+      columnDefs = list(list(targets = 1, width='150px')
+      )
     )
   )
   
@@ -311,8 +311,8 @@ function(input, output, session) {
     options = list(
       pageLength = 10,
       autoWidth = TRUE,
-      scrollX = TRUE#, 
-      #columnDefs = list(list(targets = 1, width='50px'))
+      scrollX = TRUE, 
+      columnDefs = list(list(targets = 1, width='125px'))
       #columnDefs = list(list(targets = 1, visible=TRUE, width='50px'))
     )
   )

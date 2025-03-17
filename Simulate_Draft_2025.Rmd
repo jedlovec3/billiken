@@ -1,0 +1,297 @@
+---
+title: "Draft Simulation 2025"
+output: html_notebook
+---
+
+Must be run after Draft_Rankings_2025
+
+
+Roster positions
+
+```{r}
+# Example input lists
+positions_list <- c("p", "p", "p", "p", "p", "p", "p", "p", "p", "c", "c", "1b", "2b", "3b", "ss", "of", "of", "of", "of", "of", "mi", "ci", "dh", "util", "minors", "minors", "minors")
+team_names <- c("Blue Socks", "Free At Last", "Melonheads", "Free Birds", "Westside Marauders", "Louisville Sluggers", "Hoosiers", "Erie Lakers", "National Pastime", "Big Red Machine")
+
+# Create a tibble with one row for each combination of team name and position
+team_position_tibble <- expand_grid(team = team_names, pos = positions_list)
+
+team_position_tibble <- team_position_tibble %>% 
+  mutate(p_c = case_when(pos=="c" ~ 1, .default = 0)) %>% 
+  mutate(p_1b = case_when(pos=="1b" ~ 1, .default = 0)) %>% 
+  mutate(p_2b = case_when(pos=="2b" ~ 1, .default = 0)) %>% 
+  mutate(p_3b = case_when(pos=="3b" ~ 1, .default = 0)) %>% 
+  mutate(p_ss = case_when(pos=="ss" ~ 1, .default = 0)) %>% 
+  mutate(p_of = case_when(pos=="of" ~ 1, .default = 0)) %>% 
+  mutate(p_ci = case_when(pos=="ci" ~ 1, .default = 0)) %>% 
+  mutate(p_mi = case_when(pos=="mi" ~ 1, .default = 0)) %>% 
+  mutate(p_dh = case_when(pos=="dh" ~ 1, .default = 0)) %>% 
+  mutate(p_util = case_when(pos=="util" ~ 1, .default = 0)) %>% 
+  mutate(p_p = case_when(pos=="p" ~ 1, .default = 0)) %>% 
+  mutate(player = NA) %>% 
+  mutate(row = row_number()) %>% 
+  relocate(player, .after = pos)
+
+```
+
+Configure rosters
+```{r}
+rostered_players <- par %>% 
+  filter(!is.na(billikenTeam)) %>% 
+  #mutate(p_util = case_when(PA > 0 ~ 1, .default = 0)) %>% 
+  mutate(p_p = case_when(IP > 0 ~ 1, .default = 0)) 
+
+#order by single position players first
+
+rostered_players_pos_pivot <- 
+  rostered_players %>%
+    pivot_longer(
+      cols = starts_with("p_"),
+      names_to = "pos",
+      names_prefix = "p_",
+      values_to = "eligible",
+      values_drop_na = TRUE
+    ) %>% 
+    filter(eligible == 1) %>% 
+    filter(is.na(IP) | pos == "p")
+```
+
+
+fill rosters with keepers and drafted players
+```{r}
+f_fill_keepers <- function() {
+  
+  for (i in 1:nrow(rostered_players)) {
+  #for (i in 1:120) {
+  
+  #i <- 121
+  print(i)
+  
+  #Name
+  v_player <- rostered_players$Name[i]
+  #v_player <- "Isiah Kiner-Falefa"
+  #team
+  v_team <- rostered_players$billikenTeam[i]
+  #v_team <- "Free Birds"
+  
+  print(v_player)
+  print(v_team)
+  
+  #check open positions on team
+  open_positions <<- team_position_tibble %>% 
+    filter(team == v_team) %>% 
+    #filter(team == "Blue Socks") %>% 
+    filter(is.na(player))  
+  
+  #assign position
+  v_row <- pull(rostered_players_pos_pivot %>% 
+                  filter(Name == v_player) %>% #positions this player can play
+                  inner_join(replacement_level, join_by(pos)) %>% 
+                  inner_join(open_positions, join_by(pos)) %>% 
+                  arrange(repl_level) %>% 
+                  slice(1) %>% 
+                  select(row)
+                )
+
+  #could add logic to put a player on the bench if doesn't fit in current configuration
+  
+  v_row <- ifelse(length(v_row)==0,0,v_row)
+  
+  print(v_row)
+  
+  #write player into position
+  team_position_tibble <<- team_position_tibble %>% 
+    mutate(player = ifelse(row == v_row,v_player,player))
+    }
+  
+team_position_tibble %>% 
+  arrange(player)
+
+}
+  
+```
+
+Set up n simulations
+```{r}
+
+
+
+```
+
+
+Start a single simulation of the draft
+
+Set up simulated rosters, including latest real world picks
+```{r}
+simulated_rosters <- par
+
+
+```
+
+Start a single simulated pick
+
+create available rosters
+```{r}
+f_reset_eligible_players <- function() {
+  
+  #create available players list
+  available_players <<- simulated_rosters %>% 
+    filter(is.na(billikenTeam)) %>% 
+    mutate(p_p = case_when(IP > 0 ~ 1, .default = 0))
+    
+  #pivot to one row per available position
+  available_players_pos_pivot <<- available_players %>%
+    pivot_longer(
+      cols = starts_with("p_"),
+      names_to = "pos",
+      names_prefix = "p_",
+      values_to = "eligible",
+      values_drop_na = TRUE
+    ) %>% 
+    filter(eligible == 1) %>% 
+    filter(is.na(IP) | pos == "p")
+  
+}
+  
+```
+
+
+next eligible players for remaining roster spots
+```{r}
+f_make_pick <- function(v_drafting_team) {
+
+
+  #pick a team
+  #v_drafting_team <- "Blue Socks"
+
+  #check if roster is full
+    #if so, end
+
+  #determine open roster spots
+  open_positions <<- team_position_tibble %>% 
+    filter(team == v_drafting_team) %>% 
+    filter(is.na(player))  
+
+  #distinct eligible players to be selected
+  eligible_players <<- available_players_pos_pivot %>% 
+    inner_join(open_positions, join_by(pos)) %>% 
+    arrange(desc(ev)) %>% 
+    distinct(Name, .keep_all = TRUE) 
+  
+  #check salary cap for eligibility
+
+  #add some randomness to the draft
+  eligible_players$rand <- rnorm(nrow(eligible_players), mean = 0, sd = 2)
+  
+  #add smarter picks for Blue Socks, other teams? 
+  
+  #make pick
+  v_player <- pull(eligible_players %>% 
+    mutate(rand_ev = ev + rand) %>% 
+    arrange(desc(rand_ev)) %>% 
+    slice(1) %>% 
+    select(Name))
+  
+  #assign position to selected player
+  v_row <- pull(available_players_pos_pivot %>% 
+                  filter(Name == v_player) %>% #positions this player can play
+                  inner_join(replacement_level, join_by(pos)) %>% 
+                  inner_join(open_positions, join_by(pos)) %>% 
+                  arrange(repl_level) %>% 
+                  slice(1) %>% 
+                  select(row)
+                )
+  
+  print(v_row)
+  
+  #write player into position
+  team_position_tibble <<- 
+    team_position_tibble %>% 
+      mutate(player = ifelse(row == v_row,v_player,player))
+  
+#updated simulated rosters
+  simulated_rosters <<- simulated_rosters %>% 
+      mutate(billikenTeam = ifelse(Name == v_player,v_drafting_team,billikenTeam))
+}
+
+#simulated_rosters
+#team_position_tibble
+  
+```
+
+
+```{r}
+draft_order <- draft %>%
+  rename(player = "Player...1", billikenTeam = Team, salary = Salary) %>% 
+  mutate(contract = 1, salary = salary %>% as.numeric) %>% 
+  filter(is.na(player)) %>% 
+  select(player, Round, Pick, billikenTeam, Owner)
+```
+
+Function to identify the team that's on the clock for the next pick
+```{r}
+f_team_on_clock <- function() {
+    
+  pull(draft_order %>% 
+         arrange(Round, Pick) %>% 
+         slice(1) %>% 
+         select(billikenTeam)
+         )
+  }
+
+```
+
+Make 1 pick
+```{r}
+f_make_next_pick <- function() {
+  
+  f_reset_eligible_players()
+
+  f_make_pick(f_team_on_clock())
+  
+}
+```
+
+Test making one pick
+```{r}
+
+f_fill_keepers()
+
+test_team <- f_team_on_clock()
+
+simulated_rosters %>% 
+  filter(billikenTeam == test_team) %>% 
+  arrange(desc(contract))
+
+team_position_tibble %>% 
+  filter(team == test_team)
+
+f_make_next_pick()
+  
+simulated_rosters %>% 
+  filter(billikenTeam == test_team) %>% 
+  arrange(desc(contract))
+
+team_position_tibble %>% 
+  filter(team == test_team)
+
+
+```
+
+
+Run 1 simulated draft
+```{r}
+
+
+my_function <- function(fname, lname) {
+  paste(fname, lname)
+  
+  f_fill_keepers
+  
+}
+
+my_function("Peter", "Griffin")
+
+
+```
+

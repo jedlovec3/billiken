@@ -32,8 +32,9 @@ positions <- suppressWarnings(read_sheet("https://docs.google.com/spreadsheets/d
     mutate(p_of = case_when(RF == 1 ~ 1, CF == 1 ~ 1, LF == 1 ~ 1, .default = 0)) %>%
     mutate(p_ci = case_when(`1B` == 1 ~ 1, `3B` == 1 ~ 1, .default = 0)) %>%
     mutate(p_mi = case_when(`2B` == 1 ~ 1, SS == 1 ~ 1, .default = 0)) %>%  
+    mutate(p_util = 1) %>% 
     rename(player = PLAYER, p_c = C, p_1b = `1B`, p_2b = `2B`, p_3b = `3B`, p_ss = SS, p_dh = DH) %>% 
-    select(player, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh))
+    select(player, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh, p_util))
 
 ```
 
@@ -290,7 +291,7 @@ projected_players <- bind_rows(hitter_projections, pitcher_projections) %>%
   #filter(is.na(Owner) & !is.na(billikenTeam)) %>% 
   mutate(AVG = round(AVG,3), ERA = round(ERA,2), WHIP = round(WHIP,2), SO = case_when(IP == 0 ~ NA, IP > 0 ~ SO)) %>%  
   mutate(HR = case_when(PA == 0 ~ NA, PA > 0 ~ HR), R = case_when(PA == 0 ~ NA, PA > 0 ~ R), AVG = case_when(PA == 0 ~ NA, PA > 0 ~ AVG)) %>% 
-  select(Name, billikenTeam, contract, salary, Team, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, point_value, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh) %>% 
+  select(Name, billikenTeam, contract, salary, Team, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, point_value, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh, p_util) %>% 
   arrange(desc(point_value)) #%>% 
   #filter(billikenTeam == "Melonheads") 
 
@@ -378,7 +379,10 @@ rl_p <- projected_players %>%
   mutate(pos = 'p') %>% 
   select(Name, pos, point_value)
 
-(replacement_level <- rbind(rl_c, rl_1b, rl_2b, rl_3b, rl_ss, rl_of, rl_ci, rl_mi, rl_dh, rl_util, rl_p))
+replacement_level <- rbind(rl_c, rl_1b, rl_2b, rl_3b, rl_ss, rl_of, rl_ci, rl_mi, rl_dh, rl_util, rl_p)
+
+(replacement_level <- replacement_level %>% 
+  rename(repl_level = point_value))
 
 ```
 Note - multiposition players not totally clean here. 
@@ -403,7 +407,7 @@ par <- projected_players %>%
          ) %>% 
   mutate(par = point_value - repl) %>% 
   arrange(desc(par)) %>% 
-  select(Name, Team, billikenTeam, contract, salary, point_value, repl, par, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh)
+  select(Name, Team, billikenTeam, contract, salary, point_value, repl, par, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh, p_util)
 
 par
 ```
@@ -459,75 +463,18 @@ Factor in salaries and cap
 Build form for draft picks with projected standings
 
 ```{r}
-#Projected freezes
-cut_blue <- par %>% 
-  filter(billikenTeam == "Blue Socks") %>% 
-  filter(row_number(desc(ev)) <= 15L)
-
-cut_melon <- par %>% 
-  filter(billikenTeam == "Melonheads") %>% 
-  filter(row_number(desc(ev)) <= 15L)
-
-cut_erie <- par %>% 
-  filter(billikenTeam == "Erie Lakers") %>% 
-  filter(row_number(desc(ev)) <= 15L)
-
-cut_past <- par %>% 
-  filter(billikenTeam == "National Pastime") %>% 
-  filter(row_number(desc(ev)) <= 15L)
-
-cut_bigred <- par %>% 
-  filter(billikenTeam == "Big Red Machine") %>% 
-  filter(row_number(desc(ev)) <= 15L)
-
-cut_last <- par %>% 
-  filter(billikenTeam == "Free At Last") %>% 
-  filter(row_number(desc(ev)) <= 15L)
-
-cut_birds <- par %>% 
-  filter(billikenTeam == "Free Birds") %>% 
-  filter(row_number(desc(ev)) <= 15L)
-
-cut_west <- par %>% 
-  filter(billikenTeam == "Westside Marauders") %>% 
-  filter(row_number(desc(ev)) <= 12L)
-
-cut_slug <- par %>% 
-  filter(billikenTeam == "Louisville Sluggers") %>% 
-  filter(row_number(desc(ev)) <= 11L)
-
-cut_hoos <- par %>% 
-  filter(billikenTeam == "Hoosiers") %>% 
-  filter(row_number(desc(ev)) <= 10L)
-
-projected_keepers <- rbind(cut_blue, cut_melon, cut_erie, cut_past, cut_bigred, cut_last, cut_birds, cut_west, cut_slug, cut_hoos)
-
-projected_keepers <- projected_keepers %>% 
-  select(Name, billikenTeam) %>% 
-  rename(keepingTeam = billikenTeam) 
-
-projected_keepers
-
-```
-
-```{r}
-projected_draft_eligible <- par %>% 
-  left_join(projected_keepers, by = join_by(Name)) %>% 
-  filter(is.na(keepingTeam)) %>% 
+draft_eligible <- par %>% 
+  filter(is.na(billikenTeam)) %>% 
   relocate(ev, .after = par) %>% 
+  mutate(pick = row_number()) %>% 
   arrange(desc(ev)) 
 
-projected_draft_eligible <- 
-  projected_draft_eligible %>% 
-  mutate(pick = row_number())
-
-projected_draft_eligible
-
+draft_eligible
 ```
 
 Plot value of picks by round
 ```{r}
-ggplot(projected_draft_eligible, aes(x = pick, y = ev)) + 
+ggplot(draft_eligible, aes(x = pick, y = ev)) + 
   scale_x_continuous(breaks=seq(1, 101, 10)) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
   xlim(0,100) +
@@ -537,8 +484,7 @@ ggplot(projected_draft_eligible, aes(x = pick, y = ev)) +
 ```
 
 
-```{r}
 
 
-```
+
 
