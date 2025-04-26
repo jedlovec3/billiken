@@ -405,7 +405,7 @@ simulation_standings <- simulated_team_totals %>%
 Function to simulate multiple drafts
 ```{r}
 
-  for (i in 1:100) {
+  for (i in 1:20) {
 
     print(paste("Starting simulation #",i))
     
