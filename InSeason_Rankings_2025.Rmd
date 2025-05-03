@@ -5,8 +5,8 @@ output: html_notebook
 
 Pick a team to evaluate
 ```{r}
-evaluate_team <- "Blue Socks"
-other_team <- "Melonheads"
+evaluate_team <- "Melonheads"
+other_team <- "Blue Socks"
 ```
 
 Update rosters with trades, omissions, etc.
@@ -16,20 +16,23 @@ trade_players <- data.frame(player_name = character(),
                         stringsAsFactors = FALSE)
 
 trade_players[1,] <- c("Nolan Arenado","Blue Socks")
-trade_players[2,] <- c("Masyn Winn","Westside Marauders")
-trade_players[3,] <- c("Lars Nootbaar","Free Birds")
-trade_players[4,] <- c("Brendan Donovan","National Pastime")
-trade_players[5,] <- c("Jeff McNeil","Westside Marauders")
-trade_players[6,] <- c("Ivan Herrera","National Pastime")
-trade_players[7,] <- c("Willson Contreras","Louisville Sluggers")
-trade_players[8,] <- c("Victor Scott II","Louisville Sluggers")
-trade_players[9,] <- c("Nolan Gorman","Hoosiers")
-trade_players[10,] <- c("Alex Burleson","National Pastime")
-trade_players[11,] <- c("Pedro Pages","Big Red Machine")
-trade_players[12,] <- c("Jordan Walker","Hoosiers")
+# trade_players[2,] <- c("Masyn Winn","Westside Marauders")
+# trade_players[3,] <- c("Lars Nootbaar","Free Birds")
+# trade_players[4,] <- c("Brendan Donovan","National Pastime")
+# trade_players[5,] <- c("Jeff McNeil","Westside Marauders")
+# trade_players[6,] <- c("Ivan Herrera","National Pastime")
+# trade_players[7,] <- c("Willson Contreras","Louisville Sluggers")
+# trade_players[8,] <- c("Victor Scott II","Louisville Sluggers")
+# trade_players[9,] <- c("Nolan Gorman","Hoosiers")
+# trade_players[10,] <- c("Alex Burleson","National Pastime")
+# trade_players[11,] <- c("Pedro Pages","Big Red Machine")
+# trade_players[12,] <- c("Jordan Walker","Hoosiers")
+# trade_players[13,] <- c("Sonny Gray","Erie Lakers")
+# trade_players[14,] <- c("Ryan Helsley","Hoosiers")
 
-trade_players[13,] <- c("Bryce Harper","Blue Socks")
-trade_players[14,] <- c("Wilmer Flores","Free At Last")
+
+#trade_players[13,] <- c("Bryce Harper","Blue Socks")
+#trade_players[14,] <- c("Jeimer Candelario","Free At Last")
 
 
 trade_players
@@ -39,7 +42,7 @@ trade_players
 
 Load libraries
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 library(tidyverse)
 library(googlesheets4)
 library(fuzzyjoin)
@@ -47,7 +50,7 @@ library(fuzzyjoin)
 ```
 
 Import google sheets of Billiken League data
-```{r}
+```{r eval=FALSE, include=FALSE}
 
 #Pull rosters data
 rosters_import <- read_sheet("https://docs.google.com/spreadsheets/d/1nfL9yd09BNp0DWU7y5P36P_EMj_I6Aaf40K_k-9-IpU/edit?gid=724458944#gid=724458944", sheet = "Rosters", col_types = 'cccccc') %>% 
@@ -299,20 +302,20 @@ Move on to next player
 projected_players$points_impact <- 0
 projected_players$points_pred_impact <- 0
 
-# for (i in 1:nrow(projected_players)
-#      )
-#   {
+for (i in 1:nrow(projected_players)
+     )
+  {
 
 #i <- 1
 
-i <- (1:nrow(projected_players))[projected_players[,"Name"] == "Dansby Swanson"]
+#i <- (1:nrow(projected_players))[projected_players[,"Name"] == "Alex Call"]
   
   projected_players_sim <- projected_players
   
   player_name <- projected_players_sim[i,]$Name
   
-  player_team <- projected_players_sim[i,]$billikenTeam
-  
+  player_team <- coalesce(projected_players_sim[i,]$billikenTeam,"None")
+    
   projected_players_sim[i,]$billikenTeam <- ifelse(player_team == evaluate_team, other_team, evaluate_team)
   
   #re-add team stats with new rosters
@@ -404,12 +407,12 @@ i <- (1:nrow(projected_players))[projected_players[,"Name"] == "Dansby Swanson"]
   projected_players[i,]$points_pred_impact <- abs(after_points_pred - before_points_pred)
   
   
-# }
+}
 
 projected_players <- projected_players %>% 
   arrange(desc(abs(points_pred_impact)))
 
-projected_players
+projected_players 
 
 write_csv(projected_players, "proj_impact.csv")
 
