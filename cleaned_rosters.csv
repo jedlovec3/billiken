@@ -1,39 +1,66 @@
 BillikenTeam,Slot,Player,Team,Position,Acq
-Melonheads,C,William Contreras,Mil,"C, DH",Draft
-Melonheads,C,Elias Diaz,SD,C,Draft
-Melonheads,1B,Nathaniel Lowe,Wsh,1B,Draft
-Melonheads,2B,Adam Frazier,Pit,"2B, OF",Free Agency
-Melonheads,3B,Noelvi Marte,Cin,3B,Draft
-Melonheads,SS,Luisangel Acuna,NYM,"SS, 2B",Draft
-Melonheads,2B/SS,CJ Abrams,Wsh,SS,Draft
-Melonheads,1B/3B,Eric Wagaman,Mia,"3B, 1B",Free Agency
-Melonheads,OF,Kyle Tucker,ChC,OF,Draft
-Melonheads,OF,Johan Rojas,Phi,OF,Draft
-Melonheads,OF,Pete Crow-Armstrong,ChC,OF,Draft
-Melonheads,OF,Seiya Suzuki,ChC,"OF, DH",Draft
-Melonheads,OF,Brandon Nimmo,NYM,OF,Draft
-Melonheads,DH,Jesse Winker,NYM,"OF, DH",Draft
-Melonheads,UTIL,Luis Arraez,SD,"1B, 2B, DH",Draft
-Melonheads,P,Zack Wheeler,Phi,SP,Draft
-Melonheads,P,Tanner Scott,LAD,RP,Draft
-Melonheads,P,Shota Imanaga,ChC,SP,Draft
-Melonheads,P,Paul Skenes,Pit,SP,Draft
-Melonheads,P,Jake Irvin,Wsh,SP,Draft
-Melonheads,P,Adrian Morejon,SD,RP,Free Agency
-Melonheads,P,Huascar Brazoban,NYM,RP,Free Agency
-Melonheads,P,Yuki Matsui,SD,RP,Free Agency
-Melonheads,P,Anthony Bender,Mia,RP,Free Agency
-Melonheads,Bench,Luis Campusano,SD,C,Draft
-Melonheads,IL,Michael Kopech,LAD,RP,Draft
-Melonheads,IL,Blake Snell,LAD,SP,Draft
-Melonheads,IL,Thairo Estrada,Col,2B,Draft
-Melonheads,IL,Ryan Brasier,ChC,RP,Draft
-Melonheads,IL,Griffin Conine,Mia,OF,Draft
-National Pastime,C,Luis Torrens,NYM,C,Free Agency
-National Pastime,C,Martin Maldonado,SD,C,Free Agency
+Erie Lakers,C,Gabriel Moreno,Ari,C,Draft
+Erie Lakers,C,Jose Trevino,Cin,C,Free Agency
+Erie Lakers,1B,Freddie Freeman,LAD,1B,Draft
+Erie Lakers,2B,Bryson Stott,Phi,2B,Draft
+Erie Lakers,3B,Santiago Espinal,Cin,"3B, 2B",Free Agency
+Erie Lakers,SS,Xander Bogaerts,SD,"2B, SS",Draft
+Erie Lakers,2B/SS,Ezequiel Tovar,Col,SS,Draft
+Erie Lakers,1B/3B,Enrique Hernandez,LAD,"3B, 1B, 2B, OF",Free Agency
+Erie Lakers,OF,Mookie Betts,LAD,"SS, OF",Draft
+Erie Lakers,OF,Sal Frelick,Mil,OF,Draft
+Erie Lakers,OF,James Wood,Wsh,"OF, DH",Draft
+Erie Lakers,OF,Lourdes Gurriel Jr.,Ari,OF,Draft
+Erie Lakers,OF,Juan Soto,NYM,OF,Draft
+Erie Lakers,DH,Christian Yelich,Mil,"OF, DH",Draft
+Erie Lakers,UTIL,Tyrone Taylor,NYM,OF,Free Agency
+Erie Lakers,P,Ranger Suarez,Phi,SP,Draft
+Erie Lakers,P,Trevor Megill,Mil,RP,Draft
+Erie Lakers,P,Sonny Gray,StL,SP,Draft
+Erie Lakers,P,Justin Martinez,Ari,RP,Draft
+Erie Lakers,P,Camilo Doval,SF,RP,Draft
+Erie Lakers,P,Andrew Heaney,Pit,SP,Draft
+Erie Lakers,P,Andre Pallante,StL,"SP, RP",Free Agency
+Erie Lakers,P,Griffin Canning,NYM,SP,Free Agency
+Erie Lakers,P,Bailey Falter,Pit,SP,Free Agency
+Erie Lakers,IL,Justin Steele,ChC,SP,Draft
+Louisville Sluggers,C,Willson Contreras,StL,"C, 1B, DH",Draft
+Louisville Sluggers,C,Hunter Goodman,Col,"OF, C, DH",Draft
+Louisville Sluggers,1B,Rhys Hoskins,Mil,"1B, DH",Draft
+Louisville Sluggers,2B,Luis Garcia Jr.,Wsh,2B,Draft
+Louisville Sluggers,3B,Jose Tena,Wsh,3B,Free Agency
+Louisville Sluggers,SS,Javier Sanoja,Mia,"OF, 2B, SS",Free Agency
+Louisville Sluggers,2B/SS,Kyle Farmer,Col,"2B, 3B, SS",Free Agency
+Louisville Sluggers,1B/3B,Jake Bauers,Mil,"1B, OF",Free Agency
+Louisville Sluggers,OF,Brenton Doyle,Col,OF,Draft
+Louisville Sluggers,OF,Jackson Merrill,SD,OF,Draft
+Louisville Sluggers,OF,Jackson Chourio,Mil,OF,Draft
+Louisville Sluggers,OF,Victor Scott II,StL,OF,Draft
+Louisville Sluggers,OF,Will Benson,Cin,OF,Free Agency
+Louisville Sluggers,DH,Shohei Ohtani,LAD,"DH, SP",Draft
+Louisville Sluggers,UTIL,Henry Davis,Pit,C,Free Agency
+Louisville Sluggers,P,Cristopher Sanchez,Phi,SP,Draft
+Louisville Sluggers,P,Dylan Cease,SD,SP,Draft
+Louisville Sluggers,P,Edwin Diaz,NYM,RP,Draft
+Louisville Sluggers,P,David Peterson,NYM,SP,Draft
+Louisville Sluggers,P,Jesus Luzardo,Phi,SP,Draft
+Louisville Sluggers,P,Dustin May,LAD,SP,Draft
+Louisville Sluggers,P,Emilio Pagan,Cin,RP,Free Agency
+Louisville Sluggers,P,Dennis Santana,Pit,RP,Free Agency
+Louisville Sluggers,P,Tanner Banks,Phi,RP,Free Agency
+Louisville Sluggers,Bench,Xavier Edwards,Mia,SS,Draft
+Louisville Sluggers,Bench,Jose Alvarado,Phi,RP,Draft
+Louisville Sluggers,Bench,Jarlin Susana,Wsh,SP,Draft
+Louisville Sluggers,Bench,Alex Freeland,LAD,SS,Draft
+Louisville Sluggers,IL,Christian Encarnacion-Strand,Cin,1B,Draft
+Louisville Sluggers,IL,Nick Gonzales,Pit,2B,Draft
+Louisville Sluggers,IL,Austin Hays,Cin,"OF, DH",Draft
+Louisville Sluggers,IL,Enmanuel Valdez,Pit,"2B, 1B",Free Agency
+National Pastime,C,Ivan Herrera,StL,"C, DH",Draft
+National Pastime,C,Tyler Stephenson,Cin,C,Draft
 National Pastime,1B,Michael Toglia,Col,1B,Draft
 National Pastime,2B,Brice Turang,Mil,2B,Draft
-National Pastime,3B,Mark Vientos,NYM,3B,Draft
+National Pastime,3B,Mark Vientos,NYM,"3B, DH",Draft
 National Pastime,SS,Francisco Lindor,NYM,SS,Draft
 National Pastime,2B/SS,Willy Adames,SF,SS,Draft
 National Pastime,1B/3B,Austin Riley,Atl,3B,Draft
@@ -43,7 +70,7 @@ National Pastime,OF,Alec Burleson,StL,"OF, 1B, DH",Draft
 National Pastime,OF,Brendan Donovan,StL,"OF, 2B",Draft
 National Pastime,OF,Max Kepler,Phi,OF,Draft
 National Pastime,DH,Justin Turner,ChC,"1B, DH",Free Agency
-National Pastime,UTIL,Jon Berti,ChC,3B,Free Agency
+National Pastime,UTIL,Tyler Fitzgerald,SF,"SS, 2B",Draft
 National Pastime,P,Spencer Schwellenbach,Atl,SP,Draft
 National Pastime,P,Kyle Finnegan,Wsh,RP,Draft
 National Pastime,P,Freddy Peralta,Mil,SP,Draft
@@ -53,144 +80,89 @@ National Pastime,P,Erick Fedde,StL,SP,Draft
 National Pastime,P,Matthew Boyd,ChC,SP,Draft
 National Pastime,P,Tylor Megill,NYM,SP,Free Agency
 National Pastime,P,Matthew Liberatore,StL,"RP, SP",Free Agency
-National Pastime,IL,Tyler Fitzgerald,SF,"SS, 2B",Draft
-National Pastime,IL,Ivan Herrera,StL,C,Draft
 National Pastime,IL,Nestor Cortes,Mil,SP,Draft
-National Pastime,IL,Tyler Stephenson,Cin,C,Draft
 National Pastime,IL,Kris Bryant,Col,"OF, 1B, DH",Draft
-Louisville Sluggers,C,Willson Contreras,StL,"C, 1B, DH",Draft
-Louisville Sluggers,C,Hunter Goodman,Col,"OF, C, DH",Draft
-Louisville Sluggers,1B,Rhys Hoskins,Mil,"1B, DH",Draft
-Louisville Sluggers,2B,Luis Garcia Jr.,Wsh,2B,Draft
-Louisville Sluggers,3B,Tyler Wade,SD,"3B, OF",Free Agency
-Louisville Sluggers,SS,Xavier Edwards,Mia,SS,Draft
-Louisville Sluggers,2B/SS,Javier Sanoja,Mia,"OF, SS",Free Agency
-Louisville Sluggers,1B/3B,Enmanuel Valdez,Pit,"2B, 1B",Free Agency
-Louisville Sluggers,OF,Brenton Doyle,Col,OF,Draft
-Louisville Sluggers,OF,Jackson Chourio,Mil,OF,Draft
-Louisville Sluggers,OF,Victor Scott II,StL,OF,Draft
-Louisville Sluggers,OF,Eli White,Atl,OF,Free Agency
-Louisville Sluggers,DH,Shohei Ohtani,LAD,"DH, SP",Draft
-Louisville Sluggers,UTIL,Matt Mervis,Mia,"DH, 1B",Free Agency
-Louisville Sluggers,P,Cristopher Sanchez,Phi,SP,Draft
-Louisville Sluggers,P,Dylan Cease,SD,SP,Draft
-Louisville Sluggers,P,Edwin Diaz,NYM,RP,Draft
-Louisville Sluggers,P,David Peterson,NYM,SP,Draft
-Louisville Sluggers,P,Jesus Luzardo,Phi,SP,Draft
-Louisville Sluggers,P,Dustin May,LAD,SP,Draft
-Louisville Sluggers,P,Jose Alvarado,Phi,RP,Draft
-Louisville Sluggers,P,Emilio Pagan,Cin,RP,Free Agency
-Louisville Sluggers,P,Dennis SantanaB,Pit,RP,Free Agency
-Louisville Sluggers,Bench,Jarlin Susana,Wsh,SP,Draft
-Louisville Sluggers,Bench,Alex Freeland,LAD,SS,Draft
-Louisville Sluggers,IL,Jackson Merrill,SD,OF,Draft
-Louisville Sluggers,IL,Christian Encarnacion-Strand,Cin,1B,Draft
-Louisville Sluggers,IL,Nick Gonzales,Pit,2B,Draft
-Louisville Sluggers,IL,Austin Hays,Cin,OF,Draft
-Erie Lakers,C,Gabriel Moreno,Ari,C,Draft
-Erie Lakers,C,Jose Trevino,Cin,C,Free Agency
-Erie Lakers,1B,Freddie Freeman,LAD,1B,Draft
-Erie Lakers,2B,Otto Lopez,Mia,2B,Draft
-Erie Lakers,3B,Kyle Farmer,Col,"2B, 3B",Free Agency
-Erie Lakers,SS,Xander Bogaerts,SD,"2B, SS",Draft
-Erie Lakers,2B/SS,Bryson Stott,Phi,2B,Draft
-Erie Lakers,1B/3B,Enrique Hernandez,LAD,"3B, 1B",Free Agency
-Erie Lakers,OF,Mookie Betts,LAD,"SS, OF",Draft
-Erie Lakers,OF,Sal Frelick,Mil,OF,Draft
-Erie Lakers,OF,James Wood,Wsh,OF,Draft
-Erie Lakers,OF,Lourdes Gurriel Jr.,Ari,OF,Draft
-Erie Lakers,OF,Juan Soto,NYM,OF,Draft
-Erie Lakers,DH,Christian Yelich,Mil,"OF, DH",Draft
-Erie Lakers,UTIL,Tyrone Taylor,NYM,OF,Free Agency
-Erie Lakers,P,Trevor Megill,Mil,RP,Draft
-Erie Lakers,P,Sonny Gray,StL,SP,Draft
-Erie Lakers,P,Brady Singer,Cin,SP,Draft
-Erie Lakers,P,Camilo Doval,SF,RP,Draft
-Erie Lakers,P,Andrew Heaney,Pit,SP,Draft
-Erie Lakers,P,Andre Pallante,StL,"SP, RP",Free Agency
-Erie Lakers,P,Taijuan Walker,Phi,SP,Free Agency
-Erie Lakers,P,Griffin Canning,NYM,SP,Free Agency
-Erie Lakers,IL,Ranger Suarez,Phi,SP,Draft
-Erie Lakers,IL,Ezequiel Tovar,Col,SS,Draft
-Erie Lakers,IL,Justin Steele,ChC,SP,Draft
-Erie Lakers,IL,Justin Martinez,Ari,RP,Draft
-Erie Lakers,IL,Aaron Civale,Mil,SP,Draft
-Erie Lakers,IL,Nick Fortes,Mia,C,Draft
-Big Red Machine,C,Sean Murphy,Atl,C,Draft
-Big Red Machine,C,Pedro Pages,StL,C,Free Agency
-Big Red Machine,1B,Michael Busch,ChC,1B,Draft
-Big Red Machine,2B,Jose Iglesias,SD,"2B, 3B",Free Agency
-Big Red Machine,3B,Joey Ortiz,Mil,"3B, SS",Draft
-Big Red Machine,SS,Dansby Swanson,ChC,SS,Draft
-Big Red Machine,2B/SS,Caleb Durbin,Mil,"2B, 3B",Draft
-Big Red Machine,1B/3B,Josh Naylor,Ari,1B,Draft
-Big Red Machine,OF,Fernando Tatis Jr.,SD,OF,Draft
-Big Red Machine,OF,Michael Conforto,LAD,"OF, DH",Draft
-Big Red Machine,OF,Tommy Pham,Pit,OF,Draft
-Big Red Machine,OF,Jarred Kelenic,Atl,OF,Draft
-Big Red Machine,OF,Pavin Smith,Ari,"1B, OF, DH",Draft
-Big Red Machine,DH,Marcell Ozuna,Atl,DH,Draft
-Big Red Machine,UTIL,Kyle Stowers,Mia,OF,Draft
-Big Red Machine,P,Kodai Senga,NYM,SP,Draft
-Big Red Machine,P,Robert Suarez,SD,RP,Draft
-Big Red Machine,P,Michael King,SD,SP,Draft
-Big Red Machine,P,Sandy Alcantara,Mia,SP,Draft
-Big Red Machine,P,Chase Dollander,Col,SP,Draft
-Big Red Machine,P,Grant Holmes,Atl,"RP, SP",Draft
-Big Red Machine,P,Eduardo Rodriguez,Ari,SP,Free Agency
-Big Red Machine,P,Quinn Priester,Mil,"SP, RP",Free Agency
-Big Red Machine,P,Tony Gonsolin,LAD,SP,Free Agency
-Big Red Machine,Bench,Bubba Chandler,Pit,SP,Draft
-Big Red Machine,Bench,Cade Horton,ChC,SP,Draft
-Big Red Machine,IL,Yu Darvish,SD,SP,Draft
-Big Red Machine,IL,Ketel Marte,Ari,"2B, DH",Draft
-Big Red Machine,IL,Paul DeJong,Wsh,"SS, 3B",Free Agency
-Blue Socks,C,Keibert Ruiz,Wsh,C,Draft
-Blue Socks,C,J.T. Realmuto,Phi,C,Draft
-Blue Socks,1B,Bryce Harper,Phi,1B,Trade
-Blue Socks,2B,Connor Norby,Mia,"3B, 2B",Draft
-Blue Socks,3B,Nolan Arenado,StL,3B,Draft
-Blue Socks,SS,Trea Turner,Phi,SS,Draft
-Blue Socks,2B/SS,Tommy Edman,LAD,"OF, 2B, SS",Draft
-Blue Socks,1B/3B,Ke'Bryan Hayes,Pit,3B,Draft
-Blue Socks,OF,Dylan Crews,Wsh,OF,Draft
-Blue Socks,OF,Jesus Sanchez,Mia,OF,Draft
-Blue Socks,OF,Jung Hoo Lee,SF,OF,Draft
-Blue Socks,OF,Alek Thomas,Ari,OF,Free Agency
-Blue Socks,OF,Mickey Moniak,Col,OF,Free Agency
-Blue Socks,DH,Starling Marte,NYM,"OF, DH",Draft
-Blue Socks,P,Yoshinobu Yamamoto,LAD,SP,Draft
-Blue Socks,P,MacKenzie Gore,Wsh,SP,Draft
-Blue Socks,P,Nick Lodolo,Cin,SP,Draft
-Blue Socks,P,Aaron Nola,Phi,SP,Draft
-Blue Socks,P,Ryan Pressly,ChC,RP,Draft
-Blue Socks,P,Jeremiah Estrada,SD,RP,Draft
-Blue Socks,P,Matt Strahm,Phi,RP,Free Agency
-Blue Socks,P,Kirby Yates,LAD,RP,Free Agency
-Blue Socks,P,Dylan Lee,Atl,RP,Free Agency
-Blue Socks,Bench,Jurickson Profar,Atl,OF,Draft
-Blue Socks,Bench,Bryce Eldridge,SF,1B,Draft
-Blue Socks,Bench,Dalton Rushing,LAD,"C, OF",Draft
-Blue Socks,Bench,Aidan,Mil,lerPhiSS,Draft
-Blue Socks,IL,A.J. Puk,Ari,RP,Draft
-Blue Socks,IL,Sean Manaea,NYM,SP,Draft
-Blue Socks,IL,Eury Perez,Mia,SP,Draft
-Blue Socks,IL,Jeimer Candelario,Cin,"3B, 1B, DH",Draft
-Blue Socks,IL,Jose Siri,NYM,OF,Draft
-Blue Socks,IL,Spencer Horwitz,Pit,"1B, 2B",Draft
+Melonheads,C,Luis Campusano,SD,C,Draft
+Melonheads,C,Elias Diaz,SD,C,Free Agency
+Melonheads,1B,Nathaniel Lowe,Wsh,1B,Draft
+Melonheads,2B,Adam Frazier,Pit,"2B, OF",Free Agency
+Melonheads,3B,Eric Wagaman,Mia,"3B, 1B, OF",Free Agency
+Melonheads,SS,Luisangel Acuna,NYM,"SS, 2B",Draft
+Melonheads,2B/SS,CJ Abrams,Wsh,SS,Draft
+Melonheads,1B/3B,Luis Arraez,SD,"1B, 2B, DH",Draft
+Melonheads,OF,Kyle Tucker,ChC,OF,Draft
+Melonheads,OF,Johan Rojas,Phi,OF,Draft
+Melonheads,OF,Pete Crow-Armstrong,ChC,OF,Draft
+Melonheads,OF,Seiya Suzuki,ChC,"OF, DH",Draft
+Melonheads,OF,Brandon Nimmo,NYM,OF,Draft
+Melonheads,DH,William Contreras,Mil,"C, DH",Draft
+Melonheads,UTIL,Thairo Estrada,Col,2B,Draft
+Melonheads,P,Zack Wheeler,Phi,SP,Draft
+Melonheads,P,Tanner Scott,LAD,RP,Draft
+Melonheads,P,Paul Skenes,Pit,SP,Draft
+Melonheads,P,Jake Irvin,Wsh,SP,Draft
+Melonheads,P,Huascar Brazoban,NYM,RP,Free Agency
+Melonheads,P,Yuki Matsui,SD,RP,Free Agency
+Melonheads,P,Anthony Bender,Mia,RP,Free Agency
+Melonheads,P,Stephen Kolek,SD,"RP, SP",Free Agency
+Melonheads,P,Brady Singer,Cin,SP,Free Agency
+Melonheads,IL,Michael Kopech,LAD,RP,Draft
+Melonheads,IL,Shota Imanaga,ChC,SP,Draft
+Melonheads,IL,Blake Snell,LAD,SP,Draft
+Melonheads,IL,Noelvi Marte,Cin,3B,Draft
+Melonheads,IL,Jesse Winker,NYM,"OF, DH",Draft
+Melonheads,IL,Griffin Conine,Mia,OF,Draft
+Hoosiers,C,Endy Rodriguez,Pit,"C, 1B",Draft
+Hoosiers,C,Agustin Ramirez,Mia,"C, 1B, DH",Free Agency
+Hoosiers,1B,Gavin Sheets,SD,"OF, 1B, DH",Draft
+Hoosiers,2B,Jake Cronenworth,SD,"1B, 2B",Draft
+Hoosiers,3B,Manny Machado,SD,"3B, DH",Draft
+Hoosiers,SS,Elly De La Cruz,Cin,SS,Draft
+Hoosiers,2B/SS,Matt McLain,Cin,"SS, 2B",Draft
+Hoosiers,1B/3B,LaMonte Wade Jr.,SF,1B,Free Agency
+Hoosiers,OF,Corbin Carroll,Ari,OF,Draft
+Hoosiers,OF,Heliot Ramos,SF,OF,Draft
+Hoosiers,OF,Jordan Walker,StL,OF,Draft
+Hoosiers,OF,Jordan Beck,Col,OF,Draft
+Hoosiers,OF,Luis Matos,SF,OF,Free Agency
+Hoosiers,DH,Andrew McCutchen,Pit,DH,Free Agency
+Hoosiers,UTIL,Robert Hassell III,Wsh,OF,Free Agency
+Hoosiers,P,Ryan Helsley,StL,RP,Draft
+Hoosiers,P,Logan Webb,SF,SP,Draft
+Hoosiers,P,Corbin Burnes,Ari,SP,Draft
+Hoosiers,P,Clay Holmes,NYM,"RP, SP",Draft
+Hoosiers,P,Landen Roupp,SF,"RP, SP",Free Agency
+Hoosiers,P,Max Meyer,Mia,SP,Free Agency
+Hoosiers,P,Hayden Birdsong,SF,"SP, RP",Free Agency
+Hoosiers,P,Daniel Palencia,ChC,RP,Free Agency
+Hoosiers,P,Kyle Harrison,SF,SP,Free Agency
+Hoosiers,Bench,Zac Veen,Col,OF,Draft
+Hoosiers,Bench,Quinn Mathews,StL,SP,Draft
+Hoosiers,Bench,Oliver Dunn,Mil,3B,Draft
+Hoosiers,Bench,JJ Wetherholt,StL,SS,Draft
+Hoosiers,Bench,Jett Williams,NYM,SS,Draft
+Hoosiers,Bench,Thomas Saggese,StL,2B,Free Agency
+Hoosiers,Bench,Moises Ballesteros,ChC,C,Free Agency
+Hoosiers,IL,Joey Bart,Pit,C,Draft
+Hoosiers,IL,Jared Jones,Pit,SP,Draft
+Hoosiers,IL,Tyler Glasnow,LAD,SP,Draft
+Hoosiers,IL,Garrett Mitchell,Mil,OF,Draft
+Hoosiers,IL,Brandon Woodruff,Mil,SP,Draft
+Hoosiers,IL,AJ Smith-Shawver,Atl,SP,Draft
+Hoosiers,IL,Justin Verlander,SF,SP,Free Agency
 Westside Marauders,C,Francisco Alvarez,NYM,C,Draft
 Westside Marauders,C,Will Smith,LAD,C,Draft
 Westside Marauders,1B,Pete Alonso,NYM,1B,Draft
-Westside Marauders,2B,Jeff McNeil,NYM,2B,Free Agency
+Westside Marauders,2B,Brett Baty,NYM,"3B, 2B",Free Agency
 Westside Marauders,3B,Eugenio Suarez,Ari,3B,Draft
 Westside Marauders,SS,Masyn Winn,StL,SS,Draft
-Westside Marauders,2B/SS,Adael Amador,Col,2B,Draft
+Westside Marauders,2B/SS,Amed Rosario,Wsh,"2B, 3B, OF, DH",Free Agency
 Westside Marauders,1B/3B,Ryan McMahon,Col,3B,Free Agency
 Westside Marauders,OF,Oneil Cruz,Pit,"SS, OF",Draft
+Westside Marauders,OF,Ronald Acuna Jr.,Atl,OF,Draft
 Westside Marauders,OF,Andy Pages,LAD,OF,Draft
-Westside Marauders,OF,Gavin Lux,Cin,"2B, OF",Draft
-Westside Marauders,OF,Amed Rosario,Wsh,"2B, 3B, OF, DH",Draft
-Westside Marauders,OF,Alex Call,Wsh,OF,Free Agency
+Westside Marauders,OF,Gavin Lux,Cin,"2B, OF, DH",Draft
+Westside Marauders,OF,Jeff McNeil,NYM,"2B, OF",Free Agency
 Westside Marauders,DH,Spencer Steer,Cin,"OF, 1B, DH",Draft
 Westside Marauders,UTIL,Carson Kelly,ChC,C,Free Agency
 Westside Marauders,P,Brandon Pfaadt,Ari,SP,Draft
@@ -200,105 +172,135 @@ Westside Marauders,P,Zac Gallen,Ari,SP,Draft
 Westside Marauders,P,Chris Sale,Atl,SP,Draft
 Westside Marauders,P,Jameson Taillon,ChC,SP,Draft
 Westside Marauders,P,Merrill Kelly,Ari,SP,Draft
-Westside Marauders,P,Orion Kerkering,Phi,RP,Free Agency
-Westside Marauders,P,Jesus Tinoco,Mia,RP,Free Agency
+Westside Marauders,P,Jordan Romano,Phi,RP,Free Agency
+Westside Marauders,P,Abner Uribe,Mil,RP,Free Agency
 Westside Marauders,Bench,Jake McCarthy,Ari,OF,Draft
 Westside Marauders,Bench,Alexis Diaz,Cin,RP,Draft
 Westside Marauders,Bench,Chase Burns,Cin,SP,Draft
 Westside Marauders,Bench,Jordan Lawlar,Ari,"SS, 3B",Draft
-Westside Marauders,Bench,Brett Baty,NYM,"3B, 2B",Free Agency
-Westside Marauders,Bench,Brandon Marsh,Phi,OF,Free Agency
-Westside Marauders,IL,Ronald Acuna Jr.,Atl,OF,Draft
-Hoosiers,C,Joey Bart,Pit,C,Draft
-Hoosiers,C,Agustin Ramirez,Mia,"C, 1B",Free Agency
-Hoosiers,1B,Gavin Sheets,SD,"OF, 1B, DH",Draft
-Hoosiers,2B,Nolan Gorman,StL,2B,Draft
-Hoosiers,3B,Jose Tena,Wsh,3B,Free Agency
-Hoosiers,SS,Elly De La Cruz,Cin,SS,Draft
-Hoosiers,2B/SS,Matt McLain,Cin,"SS, 2B",Draft
-Hoosiers,1B/3B,Manny Machado,SD,"3B, DH",Draft
-Hoosiers,OF,Corbin Carroll,Ari,OF,Draft
-Hoosiers,OF,Heliot Ramos,SF,OF,Draft
-Hoosiers,OF,Jordan Walker,StL,OF,Draft
-Hoosiers,OF,Jordan Beck,Col,OF,Draft
-Hoosiers,OF,Jose Barrero,StL,"SS, OF",Free Agency
-Hoosiers,DH,Andrew McCutchen,Pit,DH,Free Agency
-Hoosiers,UTIL,LaMonte Wade Jr.,SF,1B,Free Agency
-Hoosiers,P,Ryan Helsley,StL,RP,Draft
-Hoosiers,P,Logan Webb,SF,SP,Draft
-Hoosiers,P,Corbin Burnes,Ari,SP,Draft
-Hoosiers,P,Clay Holmes,NYM,"RP, SP",Draft
-Hoosiers,P,Seth Halvorsen,Col,RP,Draft
-Hoosiers,P,Landen Roupp,SF,"RP, SP",Free Agency
-Hoosiers,P,Max Meyer,Mia,SP,Free Agency
-Hoosiers,P,Abner Uribe,Mil,RP,Free Agency
-Hoosiers,P,Justin Verlander,SF,SP,Free Agency
-Hoosiers,Bench,Zac Veen,Col,OF,Draft
-Hoosiers,Bench,Quinn Mathews,StL,SP,Draft
-Hoosiers,Bench,AJ Smith-Shawver,Atl,SP,Draft
-Hoosiers,Bench,Oliver Dunn,Mil,3B,Draft
-Hoosiers,Bench,JJ Wetherholt,StL,SS,Draft
-Hoosiers,Bench,Jett Williams,NYM,SS,Draft
-Hoosiers,Bench,Thomas Saggese,StL,2B,Free Agency
-Hoosiers,IL,Jared Jones,Pit,SP,Draft
-Hoosiers,IL,Tyler Glasnow,LAD,SP,Draft
-Hoosiers,IL,Garrett Mitchell,Mil,OF,Draft
-Hoosiers,IL,Jake Cronenworth,SD,"1B, 2B",Draft
-Hoosiers,IL,Brandon Woodruff,Mil,SP,Draft
-Hoosiers,IL,Endy Rodriguez,Pit,"C, 1B",Draft
-Free Birds,C,Jacob Stallings,Col,C,Draft
+Westside Marauders,Bench,Tobias Myers,Mil,SP,Free Agency
 Free Birds,C,Drake Baldwin,Atl,C,Draft
+Free Birds,C,Liam Hicks,Mia,C,Free Agency
 Free Birds,1B,Matt Olson,Atl,1B,Draft
 Free Birds,2B,Nico Hoerner,ChC,2B,Draft
 Free Birds,3B,Alec Bohm,Phi,3B,Draft
 Free Birds,SS,Nick Allen,Atl,SS,Free Agency
 Free Birds,2B/SS,Isiah Kiner-Falefa,Pit,"2B, 3B, SS",Draft
 Free Birds,1B/3B,Max Muncy,LAD,3B,Draft
-Free Birds,OF,Jake Fraley,Cin,OF,Draft
 Free Birds,OF,Lars Nootbaar,StL,OF,Draft
 Free Birds,OF,TJ Friedl,Cin,OF,Draft
 Free Birds,OF,Teoscar Hernandez,LAD,OF,Draft
 Free Birds,OF,Mike Yastrzemski,SF,OF,Draft
+Free Birds,OF,Alex Verdugo,Atl,OF,Free Agency
 Free Birds,DH,Bryan Reynolds,Pit,"OF, DH",Draft
-Free Birds,UTIL,Alex Verdugo,Atl,OF,Free Agency
+Free Birds,UTIL,Matt Shaw,ChC,"3B, 2B, SS",Draft
 Free Birds,P,Robbie Ray,SF,SP,Draft
 Free Birds,P,David Bednar,Pit,RP,Draft
+Free Birds,P,Spencer Strider,Atl,SP,Draft
 Free Birds,P,Jason Adam,SD,RP,Draft
-Free Birds,P,Porter Hodge,ChC,RP,Draft
 Free Birds,P,Alex Vesia,LAD,RP,Draft
 Free Birds,P,Andrew Abbott,Cin,SP,Free Agency
-Free Birds,P,Jose Quintana,Mil,SP,Free Agency
-Free Birds,P,Chad Patrick,Mil,SP,Free Agency
 Free Birds,P,Colin Rea,ChC,SP,Free Agency
-Free Birds,Bench,Matt Shaw,ChC,"3B, 2B, SS",Draft
+Free Birds,P,Bryce Elder,Atl,SP,Free Agency
+Free Birds,P,Chad Patrick,Mil,SP,Free Agency
+Free Birds,Bench,Jake Fraley,Cin,OF,Draft
+Free Birds,Bench,Jose Quintana,Mil,SP,Free Agency
 Free Birds,Bench,Kyle Hart,SD,SP,Free Agency
+Free Birds,Bench,Logan Henderson,Mil,SP,Free Agency
 Free Birds,IL,Reynaldo Lopez,Atl,SP,Draft
-Free Birds,IL,Spencer Strider,Atl,SP,Draft
+Free Birds,IL,Porter Hodge,ChC,RP,Draft
 Free Birds,IL,Blake Treinen,LAD,RP,Draft
-Free Birds,IL,Tyler Freeman,Col,OF,Draft
+Free Birds,IL,Evan,Phi,llipsLADRP,Free Agency
+Blue Socks,C,Keibert Ruiz,Wsh,C,Draft
+Blue Socks,C,J.T. Realmuto,Phi,C,Draft
+Blue Socks,1B,Bryce Harper,Phi,1B,Trade
+Blue Socks,2B,Connor Norby,Mia,"3B, 2B",Draft
+Blue Socks,3B,Nolan Arenado,StL,3B,Draft
+Blue Socks,SS,Trea Turner,Phi,SS,Draft
+Blue Socks,2B/SS,Spencer Horwitz,Pit,"1B, 2B",Draft
+Blue Socks,1B/3B,Ke'Bryan Hayes,Pit,3B,Draft
+Blue Socks,OF,Jesus Sanchez,Mia,OF,Draft
+Blue Socks,OF,Tommy Edman,LAD,"OF, 2B, SS",Draft
+Blue Socks,OF,Jung Hoo Lee,SF,OF,Draft
+Blue Socks,OF,Alek Thomas,Ari,OF,Free Agency
+Blue Socks,OF,Mickey Moniak,Col,OF,Free Agency
+Blue Socks,DH,Starling Marte,NYM,"OF, DH",Free Agency
+Blue Socks,UTIL,Dalton Rushing,LAD,"C, OF",Draft
+Blue Socks,P,Yoshinobu Yamamoto,LAD,SP,Draft
+Blue Socks,P,MacKenzie Gore,Wsh,SP,Draft
+Blue Socks,P,Nick Lodolo,Cin,SP,Draft
+Blue Socks,P,Ryan Pressly,ChC,RP,Draft
+Blue Socks,P,Jeremiah Estrada,SD,RP,Draft
+Blue Socks,P,Dylan Lee,Atl,RP,Free Agency
+Blue Socks,P,Drew Pomeranz,ChC,RP,Free Agency
+Blue Socks,P,Clayton Kershaw,LAD,SP,Free Agency
+Blue Socks,P,Randy Rodriguez,SF,RP,Free Agency
+Blue Socks,Bench,Jurickson Profar,Atl,OF,Draft
+Blue Socks,Bench,Bryce Eldridge,SF,1B,Draft
+Blue Socks,Bench,Aidan,Mil,lerPhiSS,Draft
+Blue Socks,IL,Dylan Crews,Wsh,OF,Draft
+Blue Socks,IL,A.J. Puk,Ari,RP,Draft
+Blue Socks,IL,Sean Manaea,NYM,SP,Draft
+Blue Socks,IL,Eury Perez,Mia,SP,Draft
+Blue Socks,IL,Aaron Nola,Phi,SP,Draft
+Blue Socks,IL,Jeimer Candelario,Cin,"3B, 1B, DH",Draft
+Blue Socks,IL,Jose Siri,NYM,OF,Draft
+Blue Socks,IL,Kirby Yates,LAD,RP,Free Agency
+Big Red Machine,C,Sean Murphy,Atl,C,Draft
+Big Red Machine,C,Pedro Pages,StL,C,Free Agency
+Big Red Machine,1B,Michael Busch,ChC,1B,Draft
+Big Red Machine,2B,Ketel Marte,Ari,"2B, DH",Draft
+Big Red Machine,3B,Joey Ortiz,Mil,"3B, SS",Draft
+Big Red Machine,SS,Dansby Swanson,ChC,SS,Draft
+Big Red Machine,2B/SS,Caleb Durbin,Mil,"2B, 3B",Draft
+Big Red Machine,1B/3B,Josh Naylor,Ari,"1B, DH",Draft
+Big Red Machine,OF,Fernando Tatis Jr.,SD,OF,Draft
+Big Red Machine,OF,Michael Conforto,LAD,"OF, DH",Draft
+Big Red Machine,OF,Tommy Pham,Pit,OF,Draft
+Big Red Machine,OF,Pavin Smith,Ari,"1B, OF, DH",Draft
+Big Red Machine,OF,Kyle Stowers,Mia,OF,Draft
+Big Red Machine,DH,Marcell Ozuna,Atl,DH,Draft
+Big Red Machine,UTIL,Otto Lopez,Mia,2B,Free Agency
+Big Red Machine,P,Kodai Senga,NYM,SP,Draft
+Big Red Machine,P,Robert Suarez,SD,RP,Draft
+Big Red Machine,P,Sandy Alcantara,Mia,SP,Draft
+Big Red Machine,P,Grant Holmes,Atl,"RP, SP",Draft
+Big Red Machine,P,Cade Horton,ChC,SP,Draft
+Big Red Machine,P,Tony Gonsolin,LAD,SP,Free Agency
+Big Red Machine,P,Zach Agnos,Col,RP,Free Agency
+Big Red Machine,P,Ryan Weathers,Mia,SP,Free Agency
+Big Red Machine,Bench,Bubba Chandler,Pit,SP,Draft
+Big Red Machine,IL,Yu Darvish,SD,SP,Draft
+Big Red Machine,IL,Michael King,SD,SP,Draft
+Big Red Machine,IL,Chase Dollander,Col,SP,Draft
+Big Red Machine,IL,Eduardo Rodriguez,Ari,SP,Free Agency
+Big Red Machine,IL,Paul DeJong,Wsh,"SS, 3B",Free Agency
 Free at Last,C,Miguel Amaya,ChC,C,Draft
-Free at Last,C,Patrick Bailey,SF,C,Draft
+Free at Last,C,Luis Torrens,NYM,C,Free Agency
 Free at Last,1B,Josh Bell,Wsh,"1B, DH",Draft
 Free at Last,2B,Ozzie Albies,Atl,2B,Draft
 Free at Last,3B,Matt Chapman,SF,3B,Draft
 Free at Last,SS,Geraldo Perdomo,Ari,SS,Draft
-Free at Last,2B/SS,Edmundo Sosa,Phi,"SS, 2B, 3B",Draft
+Free at Last,2B/SS,Hyeseong Kim,LAD,2B,Draft
 Free at Last,1B/3B,Graham Pauley,Mia,3B,Free Agency
 Free at Last,OF,Ian Happ,ChC,OF,Draft
 Free at Last,OF,Jacob Young,Wsh,OF,Draft
-Free at Last,OF,Dane Myers,Mia,OF,Draft
+Free at Last,OF,Derek Hill,Mia,OF,Draft
+Free at Last,OF,Alexander Canario,Pit,OF,Free Agency
+Free at Last,OF,Alex Call,Wsh,OF,Free Agency
 Free at Last,DH,Kyle Schwarber,Phi,DH,Draft
 Free at Last,UTIL,Wilmer Flores,SF,"1B, DH",Trade
 Free at Last,P,Taylor Rogers,Cin,RP,Draft
 Free at Last,P,Jordan Hicks,SF,"SP, RP",Draft
 Free at Last,P,Nick Martinez,Cin,"RP, SP",Draft
 Free at Last,P,Mitch Keller,Pit,SP,Draft
-Free at Last,P,Roki Sasaki,LAD,SP,Draft
 Free at Last,P,Mitchell Parker,Wsh,SP,Draft
 Free at Last,P,Tyler Rogers,SF,RP,Free Agency
 Free at Last,P,Tyler Alexander,Mil,"RP, SP",Free Agency
-Free at Last,P,Colin Holderman,Pit,RP,Free Agency
+Free at Last,P,Miles Mikolas,StL,SP,Free Agency
+Free at Last,P,Steven Matz,StL,"SP, RP",Free Agency
 Free at Last,Bench,Andrew Painter,Phi,SP,Draft
-Free at Last,Bench,Hyeseong Kim,LAD,2B,Draft
 Free at Last,IL,Justin Lawrence,Pit,RP,Draft
-Free at Last,IL,Derek Hill,Mia,OF,Draft
+Free at Last,IL,Roki Sasaki,LAD,SP,Draft
+Free at Last,IL,Dane Myers,Mia,OF,Draft
+Free at Last,IL,Colin Holderman,Pit,RP,Free Agency
