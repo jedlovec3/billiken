@@ -15,25 +15,8 @@ trade_players <- data.frame(player_name = character(),
                         new_team = character(),
                         stringsAsFactors = FALSE)
 
-trade_players[1,] <- c("Nolan Arenado","Blue Socks")
-# trade_players[2,] <- c("Masyn Winn","Westside Marauders")
-# trade_players[3,] <- c("Lars Nootbaar","Free Birds")
-# trade_players[4,] <- c("Brendan Donovan","National Pastime")
-# trade_players[5,] <- c("Jeff McNeil","Westside Marauders")
-# trade_players[6,] <- c("Ivan Herrera","National Pastime")
-# trade_players[7,] <- c("Willson Contreras","Louisville Sluggers")
-# trade_players[8,] <- c("Victor Scott II","Louisville Sluggers")
-# trade_players[9,] <- c("Nolan Gorman","Hoosiers")
-# trade_players[10,] <- c("Alex Burleson","National Pastime")
-# trade_players[11,] <- c("Pedro Pages","Big Red Machine")
-# trade_players[12,] <- c("Jordan Walker","Hoosiers")
-# trade_players[13,] <- c("Sonny Gray","Erie Lakers")
-# trade_players[14,] <- c("Ryan Helsley","Hoosiers")
-
-
-#trade_players[13,] <- c("Bryce Harper","Blue Socks")
-#trade_players[14,] <- c("Jeimer Candelario","Free At Last")
-
+trade_players[1,] <- c("Ronald Acuna Jr.","Westside Marauders")
+trade_players[2,] <- c("Blake Snell","Melonheads")
 
 trade_players
 #hitter_proj_ros_export
@@ -50,7 +33,7 @@ library(fuzzyjoin)
 ```
 
 Import google sheets of Billiken League data
-```{r echo=TRUE}
+```{r}
 
 #Pull rosters data
 rosters_import <- read_sheet("https://docs.google.com/spreadsheets/d/1nfL9yd09BNp0DWU7y5P36P_EMj_I6Aaf40K_k-9-IpU/edit?gid=724458944#gid=724458944", sheet = "Rosters", col_types = 'cccccc') %>% 
@@ -68,8 +51,8 @@ hitter_projections_import <- read_csv("hitter_projections_ros.csv") %>%
 pitcher_projections_import <- read_csv("pitcher_projections_ros.csv") %>% 
   mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
 
-hitter_projections_import
-pitcher_projections_import
+#hitter_projections_import
+#pitcher_projections_import
 
 ```
 
@@ -78,11 +61,12 @@ Import rosters
 rosters <- rosters_import %>% 
   rename(billikenTeam = BillikenTeam, player = Player) %>% 
   mutate(billikenTeam = str_to_title(billikenTeam)) %>% 
+  filter(Slot != "IL") %>% 
   select(player, billikenTeam)
 
 #rosters %>% filter(billikenTeam == "Blue Socks")
 
-rosters
+#rosters
 ```
 
 
@@ -105,7 +89,6 @@ Update traded players
 ```{r}
 #rosters %>% 
 #  filter(player == "Bryce Harper")
-  
 
 for (i in 1:nrow(trade_players))
 {
@@ -126,7 +109,6 @@ for (i in 1:nrow(trade_players))
 ```
 
 
-
 ```{r}
 hitter_proj_ros_export <- hitter_projections %>% 
   select(Name, billikenTeam, Team, G, PA, AB, H, HR, R, RBI, SB, AVG)
@@ -145,7 +127,6 @@ Team Totals
   group_by(billikenTeam) %>% 
   summarize(n=n(), PA = sum(PA), AB = sum(AB), H = sum(H), HR = sum(HR), R = sum(R), RBI = sum(RBI), SB = sum(SB), AVG = sum(H)/sum(AB)))
 
-
 (pitcher_team_totals <- pitcher_projections %>% 
 #Find NL projections only
   #filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
@@ -158,7 +139,7 @@ Team Totals
 
 ```{r}
 AB_R_RBI_ratio <- pull(hitter_projections %>% 
-  filter(AB > 350) %>% 
+  slice_max(order_by = AB, n = 50) %>% 
   summarize(R = sum(R), RBI = sum(RBI), AB = sum(AB)) %>% 
   mutate(AB_R_RBI_ratio = AB/(R+RBI)) %>% 
   select(AB_R_RBI_ratio))
@@ -200,17 +181,18 @@ n_teams <- pull(count(projected_final_team_stats %>% filter(!is.na(billikenTeam)
 
 team_points <- projected_final_team_stats %>% 
   filter(!is.na(billikenTeam)) %>% 
-  mutate(hr = n_teams+1 - dense_rank(desc(HR)), r = n_teams+1 - dense_rank(desc(R)), rbi = n_teams+1 - dense_rank(desc(RBI)), sb = n_teams+1 - dense_rank(desc(SB)), avg = n_teams+1 - dense_rank(desc(AVG))) %>% 
+  mutate(hr = n_teams+1 - min_rank(desc(HR)), r = n_teams+1 - min_rank(desc(R)), rbi = n_teams+1 - min_rank(desc(RBI)), sb = n_teams+1 - min_rank(desc(SB)), avg = n_teams+1 - min_rank(desc(AVG))) %>% 
   mutate(hr_pct = (hr-1)/(n_teams-1), r_pct = (r-1)/(n_teams-1), rbi_pct = (rbi-1)/(n_teams-1), sb_pct = (sb-1)/(n_teams-1), avg_pct = (avg-1)/(n_teams-1)) %>% 
-  mutate(w = n_teams+1 - dense_rank(desc(W)), sv = n_teams+1 - dense_rank(desc(SV)), so = n_teams+1 - dense_rank(desc(SO)), era = n_teams+1 - dense_rank(ERA), whip = n_teams+1 - dense_rank(WHIP)) %>%
+  mutate(w = n_teams+1 - min_rank(desc(W)), sv = n_teams+1 - min_rank(desc(SV)), so = n_teams+1 - min_rank(desc(SO)), era = n_teams+1 - min_rank(ERA), whip = n_teams+1 - min_rank(WHIP)) %>%
   mutate(w_pct = (w-1)/(n_teams-1), sv_pct = (sv-1)/(n_teams-1), so_pct = (so-1)/(n_teams-1), era_pct = (era-1)/(n_teams-1), whip_pct = (whip-1)/(n_teams-1)) %>%
   mutate(points = hr + r + rbi + sb + avg + w + sv + so + era + whip) %>% 
   arrange(desc(points))
 
+team_points
 ```
 
 Project category variability demo
-```{r}
+```{r eval=FALSE, include=FALSE}
 ggplot(team_points, aes(AVG, avg_pct)) +
   geom_point() +
   stat_smooth(method="glm", method.args = list(family=binomial))
@@ -236,7 +218,7 @@ sb_model_glm <- glm(sb_pct ~ SB, data = team_points, family = "binomial")
 team_points$sb_pts_pred = predict(sb_model_glm, team_points, type="response")*9+1
 
 avg_model_glm <- glm(avg_pct ~ AVG, data = team_points, family = "binomial")
-team_points$avg_pts_pred = predict(hr_model_glm, team_points, type="response")*9+1
+team_points$avg_pts_pred = predict(avg_model_glm, team_points, type="response")*9+1
 
 w_model_glm <- glm(w_pct ~ W, data = team_points, family = "binomial")
 team_points$w_pts_pred = predict(w_model_glm, team_points, type="response")*9+1
@@ -253,10 +235,10 @@ team_points$era_pts_pred = predict(era_model_glm, team_points, type="response")*
 whip_model_glm <- glm(whip_pct ~ WHIP, data = team_points, family = "binomial")
 team_points$whip_pts_pred = predict(whip_model_glm, team_points, type="response")*9+1
 
-(team_points <- team_points %>% 
+team_points <- team_points %>% 
   mutate(team_points_pred = hr_pts_pred + r_pts_pred + rbi_pts_pred + sb_pts_pred + avg_pts_pred + 
            w_pts_pred + sv_pts_pred + so_pts_pred + era_pts_pred + whip_pts_pred) %>% 
-    arrange(billikenTeam) )
+    arrange(billikenTeam)
 
 
 ```
@@ -299,7 +281,7 @@ Record difference in evaluate_team's standings
 Move on to next player
 
 
-```{r echo=TRUE}
+```{r eval=FALSE, include=FALSE}
 projected_players_blue_socks <- projected_players %>% 
   filter(billikenTeam == "Blue Socks")
 
@@ -345,15 +327,15 @@ for (i in 1:nrow(projected_players_blue_socks)
   
   team_points_sim <- projected_final_team_stats_sim %>% 
     filter(!is.na(billikenTeam)) %>% 
-    mutate(hr = n_teams+1 - dense_rank(desc(HR)), r = n_teams+1 - dense_rank(desc(R)), 
-           rbi = n_teams+1 - dense_rank(desc(RBI)), sb = n_teams+1 - dense_rank(desc(SB)), 
-           avg = n_teams+1 - dense_rank(desc(AVG))) %>% 
+    mutate(hr = n_teams+1 - min_rank(desc(HR)), r = n_teams+1 - min_rank(desc(R)), 
+           rbi = n_teams+1 - min_rank(desc(RBI)), sb = n_teams+1 - min_rank(desc(SB)), 
+           avg = n_teams+1 - min_rank(desc(AVG))) %>% 
     mutate(hr_pct = (hr-1)/(n_teams-1), r_pct = (r-1)/(n_teams-1), 
            rbi_pct = (rbi-1)/(n_teams-1), sb_pct = (sb-1)/(n_teams-1), 
            avg_pct = (avg-1)/(n_teams-1)) %>% 
-    mutate(w = n_teams+1 - dense_rank(desc(W)), sv = n_teams+1 - dense_rank(desc(SV)), 
-           so = n_teams+1 - dense_rank(desc(SO)), era = n_teams+1 - dense_rank(ERA), 
-           whip = n_teams+1 - dense_rank(WHIP)) %>%
+    mutate(w = n_teams+1 - min_rank(desc(W)), sv = n_teams+1 - min_rank(desc(SV)), 
+           so = n_teams+1 - min_rank(desc(SO)), era = n_teams+1 - min_rank(ERA), 
+           whip = n_teams+1 - min_rank(WHIP)) %>%
     mutate(w_pct = (w-1)/(n_teams-1), sv_pct = (sv-1)/(n_teams-1), 
            so_pct = (so-1)/(n_teams-1), era_pct = (era-1)/(n_teams-1), 
            whip_pct = (whip-1)/(n_teams-1)) %>%
@@ -375,7 +357,7 @@ for (i in 1:nrow(projected_players_blue_socks)
   team_points_sim$sb_pts_pred = predict(sb_model_glm_sim, team_points_sim, type="response")*9+1
   
   avg_model_glm_sim <- suppressWarnings(glm(avg_pct ~ AVG, data = team_points_sim, family = "binomial"))
-  team_points_sim$avg_pts_pred = predict(hr_model_glm_sim, team_points_sim, type="response")*9+1
+  team_points_sim$avg_pts_pred = predict(avg_model_glm_sim, team_points_sim, type="response")*9+1
   
   w_model_glm_sim <- suppressWarnings(glm(w_pct ~ W, data = team_points_sim, family = "binomial"))
   team_points_sim$w_pts_pred = predict(w_model_glm_sim, team_points_sim, type="response")*9+1
@@ -424,13 +406,11 @@ projected_players_blue_socks
 
 ```
 
-
-
 ```{r}
 projected_players$points_impact <- 0
 projected_players$points_pred_impact <- 0
 
-for (i in 1:3 #nrow(projected_players)
+for (i in 1:nrow(projected_players)
      )
   {
 
@@ -469,15 +449,15 @@ for (i in 1:3 #nrow(projected_players)
   
   team_points_sim <- projected_final_team_stats_sim %>% 
     filter(!is.na(billikenTeam)) %>% 
-    mutate(hr = n_teams+1 - dense_rank(desc(HR)), r = n_teams+1 - dense_rank(desc(R)), 
-           rbi = n_teams+1 - dense_rank(desc(RBI)), sb = n_teams+1 - dense_rank(desc(SB)), 
-           avg = n_teams+1 - dense_rank(desc(AVG))) %>% 
+    mutate(hr = n_teams+1 - min_rank(desc(HR)), r = n_teams+1 - min_rank(desc(R)), 
+           rbi = n_teams+1 - min_rank(desc(RBI)), sb = n_teams+1 - min_rank(desc(SB)), 
+           avg = n_teams+1 - min_rank(desc(AVG))) %>% 
     mutate(hr_pct = (hr-1)/(n_teams-1), r_pct = (r-1)/(n_teams-1), 
            rbi_pct = (rbi-1)/(n_teams-1), sb_pct = (sb-1)/(n_teams-1), 
            avg_pct = (avg-1)/(n_teams-1)) %>% 
-    mutate(w = n_teams+1 - dense_rank(desc(W)), sv = n_teams+1 - dense_rank(desc(SV)), 
-           so = n_teams+1 - dense_rank(desc(SO)), era = n_teams+1 - dense_rank(ERA), 
-           whip = n_teams+1 - dense_rank(WHIP)) %>%
+    mutate(w = n_teams+1 - min_rank(desc(W)), sv = n_teams+1 - min_rank(desc(SV)), 
+           so = n_teams+1 - min_rank(desc(SO)), era = n_teams+1 - min_rank(ERA), 
+           whip = n_teams+1 - min_rank(WHIP)) %>%
     mutate(w_pct = (w-1)/(n_teams-1), sv_pct = (sv-1)/(n_teams-1), 
            so_pct = (so-1)/(n_teams-1), era_pct = (era-1)/(n_teams-1), 
            whip_pct = (whip-1)/(n_teams-1)) %>%
@@ -486,35 +466,35 @@ for (i in 1:3 #nrow(projected_players)
     
   #calculate predicted points
   
-  hr_model_glm_sim <- suppressWarnings(glm(hr_pct ~ HR, data = team_points_sim, family = "binomial"))
-  team_points_sim$hr_pts_pred = predict(hr_model_glm_sim, team_points_sim, type="response")*9+1
+  #hr_model_glm_sim <- suppressWarnings(glm(hr_pct ~ HR, data = team_points_sim, family = "binomial"))
+  team_points_sim$hr_pts_pred = predict(hr_model_glm, team_points_sim, type="response")*9+1
   
-  r_model_glm_sim <- suppressWarnings(glm(r_pct ~ R, data = team_points_sim, family = "binomial"))
-  team_points_sim$r_pts_pred = predict(r_model_glm_sim, team_points_sim, type="response")*9+1
+  #r_model_glm_sim <- suppressWarnings(glm(r_pct ~ R, data = team_points_sim, family = "binomial"))
+  team_points_sim$r_pts_pred = predict(r_model_glm, team_points_sim, type="response")*9+1
   
-  rbi_model_glm_sim <- suppressWarnings(glm(rbi_pct ~ RBI, data = team_points_sim, family = "binomial"))
-  team_points_sim$rbi_pts_pred = predict(rbi_model_glm_sim, team_points_sim, type="response")*9+1
+  #rbi_model_glm_sim <- suppressWarnings(glm(rbi_pct ~ RBI, data = team_points_sim, family = "binomial"))
+  team_points_sim$rbi_pts_pred = predict(rbi_model_glm, team_points_sim, type="response")*9+1
   
-  sb_model_glm_sim <- suppressWarnings(glm(sb_pct ~ SB, data = team_points_sim, family = "binomial"))
-  team_points_sim$sb_pts_pred = predict(sb_model_glm_sim, team_points_sim, type="response")*9+1
+  #sb_model_glm_sim <- suppressWarnings(glm(sb_pct ~ SB, data = team_points_sim, family = "binomial"))
+  team_points_sim$sb_pts_pred = predict(sb_model_glm, team_points_sim, type="response")*9+1
   
-  avg_model_glm_sim <- suppressWarnings(glm(avg_pct ~ AVG, data = team_points_sim, family = "binomial"))
-  team_points_sim$avg_pts_pred = predict(hr_model_glm_sim, team_points_sim, type="response")*9+1
+  #avg_model_glm_sim <- suppressWarnings(glm(avg_pct ~ AVG, data = team_points_sim, family = "binomial"))
+  team_points_sim$avg_pts_pred = predict(avg_model_glm, team_points_sim, type="response")*9+1
   
-  w_model_glm_sim <- suppressWarnings(glm(w_pct ~ W, data = team_points_sim, family = "binomial"))
-  team_points_sim$w_pts_pred = predict(w_model_glm_sim, team_points_sim, type="response")*9+1
+  #w_model_glm_sim <- suppressWarnings(glm(w_pct ~ W, data = team_points_sim, family = "binomial"))
+  team_points_sim$w_pts_pred = predict(w_model_glm, team_points_sim, type="response")*9+1
   
-  sv_model_glm_sim <- suppressWarnings(glm(sv_pct ~ SV, data = team_points_sim, family = "binomial"))
-  team_points_sim$sv_pts_pred = predict(sv_model_glm_sim, team_points_sim, type="response")*9+1
+  #sv_model_glm_sim <- suppressWarnings(glm(sv_pct ~ SV, data = team_points_sim, family = "binomial"))
+  team_points_sim$sv_pts_pred = predict(sv_model_glm, team_points_sim, type="response")*9+1
   
-  so_model_glm_sim <- suppressWarnings(glm(so_pct ~ SO, data = team_points_sim, family = "binomial"))
-  team_points_sim$so_pts_pred = predict(so_model_glm_sim, team_points_sim, type="response")*9+1
+  #so_model_glm_sim <- suppressWarnings(glm(so_pct ~ SO, data = team_points_sim, family = "binomial"))
+  team_points_sim$so_pts_pred = predict(so_model_glm, team_points_sim, type="response")*9+1
   
-  era_model_glm_sim <- suppressWarnings(glm(era_pct ~ ERA, data = team_points_sim, family = "binomial"))
-  team_points_sim$era_pts_pred = predict(era_model_glm_sim, team_points_sim, type="response")*9+1
+  #era_model_glm_sim <- suppressWarnings(glm(era_pct ~ ERA, data = team_points_sim, family = "binomial"))
+  team_points_sim$era_pts_pred = predict(era_model_glm, team_points_sim, type="response")*9+1
   
-  whip_model_glm_sim <- suppressWarnings(glm(whip_pct ~ WHIP, data = team_points_sim, family = "binomial"))
-  team_points_sim$whip_pts_pred = predict(whip_model_glm_sim, team_points_sim, type="response")*9+1
+  #whip_model_glm_sim <- suppressWarnings(glm(whip_pct ~ WHIP, data = team_points_sim, family = "binomial"))
+  team_points_sim$whip_pts_pred = predict(whip_model_glm, team_points_sim, type="response")*9+1
   
   team_points_sim <- team_points_sim %>% 
     mutate(team_points_pred = hr_pts_pred + r_pts_pred + rbi_pts_pred + sb_pts_pred + avg_pts_pred + 
@@ -534,9 +514,9 @@ for (i in 1:3 #nrow(projected_players)
   projected_players[i,]$points_impact <- abs(after_points - before_points)
   projected_players[i,]$points_pred_impact <- abs(after_points_pred - before_points_pred)
   
-  print(player_name)
-  print(team_points)
-  print(team_points_sim)
+  #print(player_name)
+  #print(team_points)
+  #print(team_points_sim)
   
 }
 
@@ -544,7 +524,8 @@ projected_players <- projected_players %>%
   arrange(desc(abs(points_pred_impact)))
 
 projected_players %>% 
-  filter(billikenTeam == "Blue Socks")
+#  filter(billikenTeam == "Blue Socks") %>% 
+  arrange(desc(points_pred_impact))
 
 write_csv(projected_players, "proj_impact.csv")
 
