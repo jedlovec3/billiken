@@ -14,19 +14,34 @@ library(fuzzyjoin)
 
 gs4_deauth()
 
+# --- Config (from .Renviron) ---
+sheet_id <- Sys.getenv("BILLIKEN_SHEET_ID", unset = "")
+if (identical(sheet_id, "")) {
+  stop("Missing BILLIKEN_SHEET_ID in .Renviron")
+}
+
+tab_frozen_rosters <- Sys.getenv("BILLIKEN_TAB_FROZEN_ROSTERS", unset = "FrozenRosters")
+tab_draft          <- Sys.getenv("BILLIKEN_TAB_DRAFT",          unset = "Draft")
+tab_salaries       <- Sys.getenv("BILLIKEN_TAB_SALARIES",       unset = "Salaries")
+tab_positions      <- Sys.getenv("BILLIKEN_TAB_POSITIONS",      unset = "Positions")
+
 #Pull pre-draft data
 #If you created a new google sheet, don't forget to change sharing permissions to "anyone with the link can edit" or you will get Oauth errors
-frozen_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1871666303#gid=1871666303", sheet = "FrozenRosters", col_types = 'cccccc')
+frozen_rosters <- read_sheet(sheet_id, sheet = tab_frozen_rosters, col_types = "cccccc")
 #frozen_rosters <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=0#gid=0", sheet = "PreFreezeRosters", col_types = 'ccccccc') %>% 
 #  rename(Owner = billikenTeam, Player = player, Contract = contract, Salary = salary)
-draft <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1008004729#gid=1008004729", sheet = "Draft", col_types = 'ciiicccccc')
-salaries <- read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=1123952567#gid=1123952567", sheet = "Salaries", col_types = 'ccc') %>% 
-    rename(new_salary = Salary)  %>% 
-    filter(!is.na(Player)) %>%  
-    mutate(across(c("new_salary"), ~gsub("\\$", "", .) %>% as.numeric))
-positions <- suppressWarnings(read_sheet("https://docs.google.com/spreadsheets/d/1ZjlBTRAnW8vTzdr4rY-ciQWmYMPvEF5xtGQkUNLg4a0/edit?gid=605162437#gid=605162437", sheet = "Positions", col_types = 'ciiiiiiiiiii') %>% 
-    mutate(PLAYER = gsub("\n.*","",PLAYER)) %>% 
-    mutate(PLAYER = gsub("DTD.*","",PLAYER)) %>%
+draft <- read_sheet(sheet_id, sheet = tab_draft, col_types = "ciiicccccc")
+salaries <- read_sheet(sheet_id, sheet = tab_salaries, col_types = "ccc") %>%
+  rename(new_salary = Salary)  %>% 
+  filter(!is.na(Player)) %>%  
+  mutate(across(c("new_salary"), ~gsub("\\$", "", .) %>% as.numeric))
+positions <- suppressWarnings(
+  read_sheet(sheet_id, sheet = tab_positions, col_types = "ciiiiiiiiiii") %>%   
+    # Ensure the player-name column is consistently called PLAYER, even if the
+    # sheet uses a different case like "Player" for the first column.
+    rename(PLAYER = 1) %>%
+    mutate(PLAYER = gsub("\n.*", "", PLAYER)) %>% 
+    mutate(PLAYER = gsub("DTD.*", "", PLAYER)) %>%
     mutate(p_of = case_when(RF == 1 ~ 1, CF == 1 ~ 1, LF == 1 ~ 1, .default = 0)) %>%
     mutate(p_ci = case_when(`1B` == 1 ~ 1, `3B` == 1 ~ 1, .default = 0)) %>%
     mutate(p_mi = case_when(`2B` == 1 ~ 1, SS == 1 ~ 1, .default = 0)) %>%  
