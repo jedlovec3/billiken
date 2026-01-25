@@ -25,6 +25,9 @@ tab_draft          <- Sys.getenv("BILLIKEN_TAB_DRAFT",          unset = "Draft")
 tab_salaries       <- Sys.getenv("BILLIKEN_TAB_SALARIES",       unset = "Salaries")
 tab_positions      <- Sys.getenv("BILLIKEN_TAB_POSITIONS",      unset = "Positions")
 
+# Projection year for local FanGraphs CSVs (e.g., 2025, 2026)
+projections_year <- Sys.getenv("BILLIKEN_PROJECTIONS_YEAR", unset = "2025")
+
 #Pull pre-draft data
 #If you created a new google sheet, don't forget to change sharing permissions to "anyone with the link can edit" or you will get Oauth errors
 frozen_rosters <- read_sheet(sheet_id, sheet = tab_frozen_rosters, col_types = "cccccc")
@@ -65,9 +68,9 @@ rosters <- rosters %>%
   filter(!is.na(player))
 
 #Load FanGraphs projections downloaded locally
-hitter_projections <- read_csv("hitter_projections_2025.csv") %>% 
+hitter_projections <- read_csv(paste0("hitter_projections_", projections_year, ".csv")) %>% 
   mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
-pitcher_projections <- read_csv("pitcher_projections_2025.csv") %>% 
+pitcher_projections <- read_csv(paste0("pitcher_projections_", projections_year, ".csv")) %>% 
   mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
 
 hitter_projections_nl <- hitter_projections %>% 
