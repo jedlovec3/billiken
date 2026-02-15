@@ -5,7 +5,6 @@
 # Load libraries
 suppressPackageStartupMessages({
   library(tidyverse)
-  library(googlesheets4)
   library(fuzzyjoin)
 })
 
@@ -15,23 +14,19 @@ projections_year <- Sys.getenv("BILLIKEN_PROJECTIONS_YEAR", unset = "2026")
 # --- Load Data ---
 message("Loading data...")
 
-# Google Sheets config
-sheet_id <- Sys.getenv("BILLIKEN_SHEET_ID", unset = "1mHMBh8g4JtdHScTuTzRn0pmin3qDfGHxWiimzWgFvuc")
-gs4_deauth()
-
-# Pull pre-freeze rosters
-prefreeze_rosters <- read_sheet(sheet_id, sheet = "PreFreezeRosters", col_types = 'ccccccc') %>% 
+# Load pre-freeze rosters from local CSV
+prefreeze_rosters <- read_csv("data/raw/prefreeze_rosters_latest.csv", show_col_types = FALSE) %>% 
   filter(!is.na(player)) %>% 
   mutate(across(c("salary"), ~gsub("\\$", "", .) %>% as.numeric))
 
-# Pull salaries
-salaries <- read_sheet(sheet_id, sheet = "Salaries", col_types = 'ccc') %>% 
+# Load salaries from local CSV
+salaries <- read_csv("data/raw/salaries_latest.csv", show_col_types = FALSE) %>%
   rename(new_salary = Salary) %>% 
   filter(!is.na(Player)) %>%  
   mutate(across(c("new_salary"), ~gsub("\\$", "", .) %>% as.numeric))
 
 # Read positions from ESPN API
-positions <- read_csv("../data/raw/positions_latest.csv", show_col_types = FALSE) %>%
+positions <- read_csv("data/raw/positions_latest.csv", show_col_types = FALSE) %>%
   mutate(p_of = case_when(RF == 1 ~ 1, CF == 1 ~ 1, LF == 1 ~ 1, .default = 0)) %>%
   mutate(p_ci = case_when(`1B` == 1 ~ 1, `3B` == 1 ~ 1, .default = 0)) %>%
   mutate(p_mi = case_when(`2B` == 1 ~ 1, SS == 1 ~ 1, .default = 0)) %>%  
@@ -39,10 +34,10 @@ positions <- read_csv("../data/raw/positions_latest.csv", show_col_types = FALSE
   select(player, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi)
 
 # Load FanGraphs projections
-hitter_projections <- read_csv(paste0("../hitter_projections_", projections_year, ".csv"), show_col_types = FALSE) %>% 
+hitter_projections <- read_csv(paste0("hitter_projections_", projections_year, ".csv"), show_col_types = FALSE) %>% 
   mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
 
-pitcher_projections <- read_csv(paste0("../pitcher_projections_", projections_year, ".csv"), show_col_types = FALSE) %>% 
+pitcher_projections <- read_csv(paste0("pitcher_projections_", projections_year, ".csv"), show_col_types = FALSE) %>%
   mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
 
 # --- Calculate Team Totals ---
@@ -137,7 +132,10 @@ projected_players <- bind_rows(hitter_projections, pitcher_projections) %>%
   mutate(salary = case_when(!is.na(billikenTeam) ~ salary, TRUE ~ new_salary)) %>% 
   mutate(AVG = round(AVG,3), ERA = round(ERA,2), WHIP = round(WHIP,2), SO = case_when(IP == 0 ~ NA, IP > 0 ~ SO)) %>%  
   mutate(HR = case_when(PA == 0 ~ NA, PA > 0 ~ HR), R = case_when(PA == 0 ~ NA, PA > 0 ~ R), AVG = case_when(PA == 0 ~ NA, PA > 0 ~ AVG)) %>% 
-  select(Name, billikenTeam, contract, salary, Team, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, point_value, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi) %>%
+  # Calculate WH (walks + hits) for WHIP and ER for ERA in standings
+  mutate(WH = ifelse(IP > 0, WHIP * IP, NA_real_)) %>%
+  mutate(ER = ifelse(IP > 0, ERA * IP / 9, NA_real_)) %>%
+  select(Name, billikenTeam, contract, salary, Team, PA, AB, H, HR, R, RBI, SB, AVG, IP, W, SV, SO, ER, WH, ERA, WHIP, point_value, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi) %>%
   arrange(desc(point_value))
 
 # --- Calculate Replacement Levels by Position ---
@@ -194,7 +192,7 @@ rl_mi <- projected_players %>%
 
 rl_util <- projected_players %>% 
   arrange(desc(point_value)) %>%
-  slice(151) %>% 
+  slice(141) %>% 
   pull(point_value)
 
 rl_p <- projected_players %>% 
@@ -232,7 +230,7 @@ par <- projected_players %>%
   ) %>% 
   mutate(par = point_value - repl) %>% 
   arrange(desc(par)) %>% 
-  select(Name, Team, billikenTeam, contract, salary, point_value, repl, par, PA, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi)
+  select(Name, Team, billikenTeam, contract, salary, point_value, repl, par, PA, AB, H, HR, R, RBI, SB, AVG, IP, W, SV, SO, ER, WH, ERA, WHIP, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi)
 
 # --- Calculate Expected Value (EV) ---
 message("Calculating expected value...")
@@ -255,8 +253,8 @@ par$surplus <- round(par$ev - par$salary, 1)
 par$ev <- round(par$ev, 1)
 
 # Export full projections
-dir.create("../data/processed", showWarnings = FALSE, recursive = TRUE)
-write_csv(par, "../data/processed/projections_2026.csv")
+dir.create("data/processed", showWarnings = FALSE, recursive = TRUE)
+write_csv(par, "data/processed/projections_2026.csv")
 message("Exported full projections to data/processed/projections_2026.csv")
 
 # --- Project Keepers for Each Team ---
@@ -299,11 +297,18 @@ for (team_name in names(keeper_limits)) {
 }
 
 # Combine all projected keepers
-projected_keepers <- bind_rows(projected_keepers_list) %>% 
+projected_keepers_full <- bind_rows(projected_keepers_list)
+
+# Export full keeper details
+write_csv(projected_keepers_full, "data/processed/projected_keepers.csv")
+message(sprintf("Exported %d projected keepers to data/processed/projected_keepers.csv", nrow(projected_keepers_full)))
+
+# Create simplified version for joins
+projected_keepers <- projected_keepers_full %>% 
   select(Name, billikenTeam) %>% 
   rename(keepingTeam = billikenTeam)
 
-message(sprintf("\nTotal projected keepers: %d", nrow(projected_keepers)))
+message(sprintf("Total projected keepers: %d", nrow(projected_keepers)))
 
 # --- Export Draft Eligible Players ---
 message("Exporting draft eligible players...")
@@ -317,7 +322,7 @@ projected_draft_eligible <- par %>%
   mutate(pick = row_number())
 
 # Write to CSV
-write_csv(projected_draft_eligible, "../data/processed/projected_draft_eligible.csv")
+write_csv(projected_draft_eligible, "data/processed/projected_draft_eligible.csv")
 
 message(sprintf("Exported %d draft eligible players to data/processed/projected_draft_eligible.csv", nrow(projected_draft_eligible)))
 

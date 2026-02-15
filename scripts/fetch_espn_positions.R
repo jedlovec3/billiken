@@ -96,11 +96,11 @@ req_env <- function(name) {
 #' @param verbose If TRUE, prints progress.
 #' @return tibble with columns PLAYER, C, 1B, 2B, 3B, SS, LF, CF, RF, DH, SP, RP
 fetch_espn_positions <- function(
-    out_latest = "../data/raw/positions_latest.csv",
-    out_dir = "../data/raw",
+    out_latest = "data/raw/positions_latest.csv",
+    out_dir = "data/raw",
     limit = 500,
     verbose = FALSE
-)
+) {
   league_id <- req_env("ESPN_LEAGUE_ID")
   season    <- as.integer(req_env("ESPN_SEASON"))
   
