@@ -6,6 +6,8 @@
 suppressPackageStartupMessages({
   library(tidyverse)
   library(fuzzyjoin)
+  library(httr)
+  library(jsonlite)
 })
 
 # Set projections year

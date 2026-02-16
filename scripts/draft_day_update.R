@@ -3,7 +3,9 @@ suppressPackageStartupMessages({
   library(readr)
   library(dplyr)
   library(googlesheets4)
+  library(httr2)
 })
+
 
 req_env <- function(name) {
   val <- Sys.getenv(name, unset = "")

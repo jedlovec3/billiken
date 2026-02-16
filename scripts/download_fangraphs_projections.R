@@ -1,51 +1,92 @@
 #!/usr/bin/env Rscript
 
-# Download FanGraphs Depth Charts projections for hitters and pitchers
-# Requires env var FANGRAPHS_COOKIE to contain your full Cookie header
-# from an authenticated Fangraphs session.
+library(here)
+source(here::here("scripts", "fangraphs_login.R"))
+
+# Always refresh login (safe and fast)
+fg_login()
 
 suppressPackageStartupMessages({
-  if (!requireNamespace("httr", quietly = TRUE)) {
-    stop("The 'httr' package is required. Install it with install.packages('httr').", call. = FALSE)
-  }
+  library(httr2)
+  library(jsonlite)
+  library(tidyverse)
 })
 
-library(httr)
+# Get projections year from environment or default to 2026
+projections_year <- Sys.getenv("BILLIKEN_PROJECTIONS_YEAR", unset = "2026")
 
-cookie <- Sys.getenv("FANGRAPHS_COOKIE")
-if (identical(cookie, "")) {
-  stop("FANGRAPHS_COOKIE is not set. Export it in your shell (see .zshrc) before running this script.", call. = FALSE)
-}
-
-# Locked-in Depth Charts export URLs (global settings; you can filter locally later)
+# Fangraphs Depth Charts endpoints
 fg_urls <- list(
-  hitters  = "https://www.fangraphs.com/api/projections?type=fangraphsdc&stats=bat&pos=all&team=0&players=0&lg=all&z=1769217940966&download=1",
-  pitchers = "https://www.fangraphs.com/api/projections?type=fangraphsdc&stats=pit&pos=all&team=0&players=0&lg=all&z=1769216772671&download=1"
+  hitters  = "https://www.fangraphs.com/api/projections?type=fangraphsdc&stats=bat&pos=all&team=0&players=0&lg=all&z=1769217940966",
+  pitchers = "https://www.fangraphs.com/api/projections?type=fangraphsdc&stats=pit&pos=all&team=0&players=0&lg=all&z=1769216772671"
 )
 
 output_files <- list(
-  hitters  = "hitter_projections_2026.csv",
-  pitchers = "pitcher_projections_2026.csv"
+  hitters  = file.path("data/raw", paste0("hitter_projections_", projections_year, ".csv")),
+  pitchers = file.path("data/raw", paste0("pitcher_projections_", projections_year, ".csv"))
 )
 
-fetch_projection <- function(url, path) {
+fetch_projection <- function(url, path, type) {
+  
   message("Requesting ", url)
-  resp <- httr::GET(url, httr::add_headers(Cookie = cookie))
-
-  # Clearer error if auth/session is bad
-  if (httr::status_code(resp) != 200) {
-    stop(sprintf("Request for %s failed with status %s. Check your FANGRAPHS_COOKIE and login state.",
-                 url, httr::status_code(resp)), call. = FALSE)
+  
+  req <- request(url) |>
+    req_cookie_preserve(path = "~/.fangraphs_cookiejar") |>
+    req_user_agent(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    ) |>
+    req_headers(
+      Referer = "https://www.fangraphs.com/projections",
+      `X-Requested-With` = "XMLHttpRequest",
+      Accept = "application/json, text/plain, */*",
+      Origin = "https://www.fangraphs.com"
+    ) |>
+    req_error(is_error = function(resp) FALSE)
+  
+  
+  resp <- req_perform(req)
+  
+  status <- resp_status(resp)
+  
+  if (status != 200) {
+    stop(sprintf(
+      "Fangraphs request failed (%s). Login likely expired or blocked.",
+      status
+    ), call. = FALSE)
   }
-
-  raw <- httr::content(resp, as = "raw")
-  writeBin(raw, path)
-
+  
+  # ---- READ JSON DIRECTLY FROM HTTR2 ----
+  content_text <- resp_body_string(resp)
+  data <- fromJSON(content_text, flatten = TRUE)
+  
+  df <- as_tibble(data)
+  
+  # Standardize player name column
+  name_cols <- c("PlayerName", "Name", "playerName", "name")
+  for (nc in name_cols) {
+    if (nc %in% names(df)) {
+      df <- df %>% rename(Name = !!sym(nc))
+      break
+    }
+  }
+  
+  # Standardize team column
+  team_cols <- c("TeamAbbr", "team", "Team")
+  for (tc in team_cols) {
+    if (tc %in% names(df) && tc != "Team") {
+      df <- df %>% rename(Team = !!sym(tc))
+      break
+    }
+  }
+  
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+  write_csv(df, path)
+  
   info <- file.info(path)
-  message(sprintf("Wrote %s (%s bytes)", path, format(info$size, big.mark = ",")))
+  message(sprintf("Wrote %s (%d rows, %s bytes)", path, nrow(df), format(info$size, big.mark=",")))
 }
 
-fetch_projection(fg_urls$hitters,  output_files$hitters)
-fetch_projection(fg_urls$pitchers, output_files$pitchers)
+fetch_projection(fg_urls$hitters,  output_files$hitters, "hitters")
+fetch_projection(fg_urls$pitchers, output_files$pitchers, "pitchers")
 
 message("Done.")
