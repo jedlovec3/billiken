@@ -90,6 +90,67 @@ Rscript -e "rmarkdown::render('Pre_Freeze_Rankings_2025.Rmd')"
 
 Replace `Pre_Freeze_Rankings_2025.Rmd` with any other `.Rmd` file you want to render.
 
+## Scripts directory
+
+The `scripts/` directory contains standalone R scripts for data fetching, analysis, and optimization. These scripts are designed to be run from the command line and produce intermediate data files in `data/raw/` and `data/processed/`.
+
+### SGP (Standings Gained Points) calculation pipeline
+
+The SGP pipeline calculates player values based on historical standings data and optimizes roster assignments. Run these scripts in order:
+
+1. **`draft_day_update.R`** - Fetches current league state and projections
+   ```sh
+   Rscript scripts/draft_day_update.R
+   ```
+   - Reads Google Sheets (rosters, draft, salaries) and writes to `data/raw/*_latest.csv`
+   - Downloads FanGraphs Depth Charts projections via `download_fangraphs_projections.R`
+   - Fetches ESPN positional eligibility via `fetch_espn_positions.R`
+   - Requires environment variables: `BILLIKEN_SHEET_ID`, `FANGRAPHS_EMAIL`, `FANGRAPHS_PASSWORD`, `ESPN_LEAGUE_ID`
+
+2. **`fetch_espn_standings.R`** - Fetches historical ESPN standings
+   ```sh
+   Rscript scripts/fetch_espn_standings.R
+   ```
+   - Fetches last 5 seasons of standings from ESPN Fantasy API
+   - Outputs: `data/raw/standings_history_latest.csv` with team stats by season
+   - Requires: `ESPN_LEAGUE_ID`, optionally `ESPN_S2` and `SWID` for private leagues
+
+3. **`standings_gained_points.R`** - Calculates category unit values
+   ```sh
+   Rscript scripts/standings_gained_points.R
+   ```
+   - Fits logit models to historical standings to derive category point values
+   - Calculates marginal unit values for each roto category (R, HR, RBI, SB, AVG, W, SV, SO, ERA, WHIP)
+   - Outputs: `data/processed/category_unit_values.csv`, `category_value_scaling.csv`
+
+4. **`calculate_player_sgp.R`** - Calculates player-level SGP
+   ```sh
+   Rscript scripts/calculate_player_sgp.R
+   ```
+   - Joins FanGraphs projections with ESPN positions
+   - Calculates SGP for each player using category unit values
+   - Handles two-way players (e.g., Shohei Ohtani)
+   - Outputs: `data/processed/player_sgp.csv`
+   - Note: Name normalization removes Jr./Sr. suffixes to match variations (e.g., "Luis Robert Jr." = "Luis Robert"), but takes first match when multiple players share a normalized name (e.g., Luis Garcia vs Luis Garcia Jr. on different teams)
+
+5. **`optimize_rosters_sgp.R`** - Optimizes roster assignments
+   ```sh
+   Rscript scripts/optimize_rosters_sgp.R
+   ```
+   - Uses integer linear programming (lpSolve) to optimize 230 roster slots across 10 teams
+   - Roster structure: 2C, 1-1B, 1-2B, 1-3B, 1-SS, 5-OF, 1-MI, 1-CI, 1-Util, 9-P per team
+   - Outputs: `data/processed/optimal_rosters_sgp.csv`, `replacement_levels_sgp.csv`
+
+### Other scripts
+
+- **`download_fangraphs_projections.R`** - Downloads projections (called by `draft_day_update.R`)
+- **`fetch_espn_positions.R`** - Fetches positional eligibility from ESPN API
+- **`fangraphs_login.R`** - Authentication helper for FanGraphs (sourced by download script)
+- **`project_keepers.R`** - Projects keeper roster values
+- **`simulate_draft.R`** - Simulates draft outcomes
+
+All scripts respect the `BILLIKEN_PROJECTIONS_YEAR` environment variable (defaults to current year) and filter projections to NL-only teams.
+
 ## Architecture notes
 
 ### Data flow and modeling
