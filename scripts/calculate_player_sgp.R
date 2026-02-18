@@ -86,8 +86,13 @@ positions <- positions %>%
 message("\nJoining projections with positions...")
 
 # Try exact match first, then fuzzy match for unmatched
+# Handle cases where multiple position entries match (e.g., Luis Garcia vs Luis Garcia Jr.)
+# Take first match for each player
 hitters_exact <- hitter_projections %>%
-  inner_join(positions, by = "name_normalized", relationship = "many-to-one")
+  inner_join(positions, by = "name_normalized") %>%
+  group_by(Name, Team, player_type) %>%
+  slice(1) %>%
+  ungroup()
 
 hitters_unmatched <- hitter_projections %>%
   anti_join(positions, by = "name_normalized")
@@ -112,8 +117,13 @@ hitters_with_pos <- hitters_with_pos %>%
   select(-name_normalized, -any_of("player"))
 
 # --- Join Pitchers with Positions ---
+# Handle cases where multiple position entries match
+# Take first match for each player
 pitchers_exact <- pitcher_projections %>%
-  inner_join(positions, by = "name_normalized", relationship = "many-to-one")
+  inner_join(positions, by = "name_normalized") %>%
+  group_by(Name, Team, player_type) %>%
+  slice(1) %>%
+  ungroup()
 
 pitchers_unmatched <- pitcher_projections %>%
   anti_join(positions, by = "name_normalized")

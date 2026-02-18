@@ -12,6 +12,17 @@
 #   ESPN_S2="..."   # required for private leagues
 #   SWID="{...}"    # required for private leagues
 
+build_url <- function(base_url, scoring_period_id = 0) {
+  paste0(
+    base_url,
+    "?scoringPeriodId=", scoring_period_id,
+    "&view=kona_player_info",
+    "&view=players_wl",
+    "&view=player_wl",
+    "&platformVersion=7d4eaefaf4829a7a88c1ee957dc86f9ed5b7c0ce"
+  )
+}
+
 suppressPackageStartupMessages({
   library(httr)
   library(jsonlite)
@@ -21,6 +32,20 @@ suppressPackageStartupMessages({
   library(readr)
   library(tibble)
 })
+
+library(jsonlite)
+
+draft_filter <- toJSON(list(
+  players = list(
+    limit = 2000,
+    sortDraftRanks = list(
+      sortPriority = 1,
+      sortAsc = TRUE,
+      value = "STANDARD"
+    )
+  )
+), auto_unbox = TRUE)
+
 
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
@@ -40,7 +65,15 @@ req_env <- function(name) {
     hdrs["Cookie"] <- paste0("espn_s2=", espn_s2, "; SWID=", swid)
   }
   
-  resp <- GET(url, add_headers(.headers = hdrs), query = query)
+  full_url <- build_url(url, 0)
+  resp <- GET(
+    full_url,
+    add_headers(
+      .headers = hdrs,
+      "x-fantasy-filter" = draft_filter
+    )
+  )
+  
   
   status <- status_code(resp)
   ctype  <- headers(resp)[["content-type"]] %||% ""
@@ -118,29 +151,59 @@ fetch_espn_positions <- function(
   }
   
   api_host <- "https://lm-api-reads.fantasy.espn.com/apis/v3"
-  base_url <- sprintf("%s/games/flb/seasons/%d/segments/0/leagues/%s", api_host, season, league_id)
   
-  query <- list(scoringPeriodId = scoring_period_id, view = "kona_player_info")
+  # League-specific URL (used for league-context player data)
+  league_url <- sprintf("%s/games/flb/seasons/%d/segments/0/leagues/%s", api_host, season, league_id)
+  
+  # Global players URL (not league-specific - gets ALL MLB players)
+  global_url <- sprintf("%s/games/flb/seasons/%d/segments/0/leagues/0", api_host, season)
+  
+  # Note: view parameter must be a single value for httr to encode properly
+  query <- list(scoringPeriodId = 0, view = c("kona_player_info","players_wl"))
   if (platform_version != "") query$platformVersion <- platform_version
   
   if (verbose) {
-    message("ESPN URL: ", base_url)
+    message("League URL: ", league_url)
+    message("Global URL: ", global_url)
     message("Query: ", paste(names(query), query, sep = "=", collapse = "&"))
   }
   
-  fetch_page <- function(offset) {
+  # All 30 MLB team IDs for filterProTeams
+  # This ensures we get players from both leagues, including recent AL->NL transfers
+  all_mlb_teams <- list(
+    value = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+              16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30)
+  )
+  
+  fetch_page <- function(url, offset, use_alpha_sort = FALSE) {
+    # Build filter - use alphabetical sort as fallback to catch players missed by %owned
+    filter_list <- list(
+      limit = limit,
+      offset = offset,
+      sortPlayerId = list(
+        sortPriority = 1,
+        sortAsc = TRUE
+      )
+    )
+    
+    
+    if (use_alpha_sort) {
+      # Sort by draft rank to catch players with 0% ownership
+      filter_list$sortDraftRanks <- list(
+        sortPriority = 1,
+        sortAsc = TRUE,
+        value = "STANDARD"
+      )
+    } else {
+      filter_list$sortPercOwned <- list(sortPriority = 1, sortAsc = FALSE)
+    }
+    
     xff <- toJSON(
-      list(
-        players = list(
-          limit = limit,
-          offset = offset,
-          sortPercOwned = list(sortPriority = 1, sortAsc = FALSE) # required with limit/offset
-        )
-      ),
+      list(players = filter_list),
       auto_unbox = TRUE
     )
     
-    dat <- .fetch_espn_json(base_url, query = query, xff = xff, espn_s2 = espn_s2, swid = swid)
+    dat <- .fetch_espn_json(url, query = query, xff = xff, espn_s2 = espn_s2, swid = swid)
     rows <- .extract_player_rows(dat)
     if (is.null(rows) || length(rows) == 0) return(tibble())
     
@@ -148,9 +211,18 @@ fetch_espn_positions <- function(
     get_name <- function(x) if (is.list(x)) (x$player$fullName %||% x$fullName %||% NA_character_) else NA_character_
     get_slots <- function(x) {
       if (!is.list(x)) return(integer(0))
-      s <- x$player$eligibleSlots %||% x$eligibleSlots %||% integer(0)
+      
+      s <- x$player$eligibleSlots %||% x$eligibleSlots
+      
+      if (is.null(s) || length(s) == 0) {
+        # preseason fallback
+        dp <- x$player$defaultPositionId %||% NA_integer_
+        if (!is.na(dp)) s <- list(dp)
+      }
+      
       as.integer(unlist(s))
     }
+    
     
     tibble(
       espn_player_id = map_int(rows, get_id),
@@ -160,18 +232,28 @@ fetch_espn_positions <- function(
       filter(!is.na(espn_player_id), !is.na(player))
   }
   
+  # Fetch from league endpoint sorted by draft rank
+  if (verbose) message("\n=== Fetching players by draft rank ===")
   pages <- list()
   offset <- 0
+  max_offset <- 5000  # ~10 pages of 500, plenty for fantasy-relevant players
   repeat {
     if (verbose) message("Fetching offset=", offset)
-    p <- fetch_page(offset)
+    p <- tryCatch(
+      fetch_page(league_url, offset, use_alpha_sort = TRUE),
+      error = function(e) {
+        if (verbose) message("Fetch error: ", e$message)
+        tibble()
+      }
+    )
     if (nrow(p) == 0) break
     pages[[length(pages) + 1]] <- p
     offset <- offset + limit
-    if (offset > 40000) break
+    if (offset >= max_offset) break
   }
   
   players <- bind_rows(pages) %>% distinct(espn_player_id, .keep_all = TRUE)
+  if (verbose) message("Total players fetched: ", nrow(players))
   if (verbose) {
     message("Players fetched: ", nrow(players))
     message("Players with any eligibleSlots: ", sum(lengths(players$eligibleSlots) > 0))
