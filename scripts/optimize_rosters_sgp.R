@@ -247,38 +247,76 @@ optimal_rosters %>%
   select(Name, Team, slot_type, sgp_total, fantasy_team) %>%
   print()
 
-# --- Calculate true replacement levels ---
+# --- Calculate replacement levels ---
 message("\n=== Calculating Replacement Levels ===\n")
 
 drafted_names <- optimal_rosters$Name
 
-replacement_levels <- tibble()
+# Replacement level definition:
+# - For each position, take the best N undrafted players eligible at that position
+# - Replacement level SGP = average of those players' SGP
+# - Use N=5 for all positions except pitchers (N=10)
+# - Also output average SGP in each of the 10 roto categories (R, HR, RBI, SB, AVG, W, SV, SO, ERA, WHIP)
 
-# Helper function to get best undrafted at position
-get_replacement <- function(position_name, filter_expr) {
-  all_players %>%
-    filter({{filter_expr}}, !Name %in% drafted_names) %>%
+get_replacement_level <- function(position_name, filter_expr, n_repl) {
+  repl_pool <- all_players %>%
+    filter({{ filter_expr }}, !Name %in% drafted_names) %>%
     arrange(desc(sgp_total)) %>%
-    slice(1) %>%
-    mutate(position = position_name) %>%
-    select(position, Name, Team, sgp_total)
+    slice_head(n = n_repl)
+
+  if (nrow(repl_pool) == 0) {
+    return(tibble(
+      position = position_name,
+      n_replacement_players = 0,
+      repl_sgp_total = NA_real_,
+      repl_sgp_R = NA_real_,
+      repl_sgp_HR = NA_real_,
+      repl_sgp_RBI = NA_real_,
+      repl_sgp_SB = NA_real_,
+      repl_sgp_AVG = NA_real_,
+      repl_sgp_W = NA_real_,
+      repl_sgp_SV = NA_real_,
+      repl_sgp_SO = NA_real_,
+      repl_sgp_ERA = NA_real_,
+      repl_sgp_WHIP = NA_real_,
+      replacement_players = NA_character_
+    ))
+  }
+
+  repl_pool %>%
+    summarise(
+      position = position_name,
+      n_replacement_players = n(),
+      repl_sgp_total = mean(sgp_total, na.rm = TRUE),
+      repl_sgp_R = mean(sgp_R, na.rm = TRUE),
+      repl_sgp_HR = mean(sgp_HR, na.rm = TRUE),
+      repl_sgp_RBI = mean(sgp_RBI, na.rm = TRUE),
+      repl_sgp_SB = mean(sgp_SB, na.rm = TRUE),
+      repl_sgp_AVG = mean(sgp_AVG, na.rm = TRUE),
+      repl_sgp_W = mean(sgp_W, na.rm = TRUE),
+      repl_sgp_SV = mean(sgp_SV, na.rm = TRUE),
+      repl_sgp_SO = mean(sgp_SO, na.rm = TRUE),
+      repl_sgp_ERA = mean(sgp_ERA, na.rm = TRUE),
+      repl_sgp_WHIP = mean(sgp_WHIP, na.rm = TRUE),
+      replacement_players = paste(Name, collapse = "; "),
+      .groups = "drop"
+    )
 }
 
-# Calculate for each position
 replacement_levels <- bind_rows(
-  get_replacement("C", p_c == 1),
-  get_replacement("1B", p_1b == 1),
-  get_replacement("2B", p_2b == 1),
-  get_replacement("3B", p_3b == 1),
-  get_replacement("SS", p_ss == 1),
-  get_replacement("OF", p_of == 1),
-  get_replacement("MI", p_mi == 1),
-  get_replacement("CI", p_ci == 1),
-  get_replacement("Util", !is_pitcher),
-  get_replacement("P", is_pitcher)
+  get_replacement_level("C", p_c == 1, n_repl = 5),
+  get_replacement_level("1B", p_1b == 1, n_repl = 5),
+  get_replacement_level("2B", p_2b == 1, n_repl = 5),
+  get_replacement_level("3B", p_3b == 1, n_repl = 5),
+  get_replacement_level("SS", p_ss == 1, n_repl = 5),
+  get_replacement_level("OF", p_of == 1, n_repl = 5),
+  get_replacement_level("MI", p_mi == 1, n_repl = 5),
+  get_replacement_level("CI", p_ci == 1, n_repl = 5),
+  get_replacement_level("Util", !is_pitcher, n_repl = 5),
+  get_replacement_level("P", is_pitcher, n_repl = 10)
 )
 
-message("Best Undrafted Player at Each Position:")
+message("Replacement levels (avg of best undrafted players by position):")
 print(replacement_levels)
 
 # --- Save results ---
@@ -289,6 +327,6 @@ write_csv(team_summary, "data/processed/team_summary_sgp.csv")
 
 message("\n✓ Results saved to data/processed/")
 message("  - optimal_rosters_sgp.csv (all assignments)")
-message("  - replacement_levels_sgp.csv (best undrafted by position)")
+message("  - replacement_levels_sgp.csv (avg SGP of best undrafted players by position + category averages)")
 message("  - position_summary_sgp.csv")
 message("  - team_summary_sgp.csv")

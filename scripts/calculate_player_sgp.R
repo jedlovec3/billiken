@@ -236,6 +236,15 @@ if (nrow(ohtani_hitter) > 0 && nrow(ohtani_pitcher) > 0) {
 # --- Combine All Players ---
 message("\nCombining all players...")
 
+ensure_columns <- function(df, defaults) {
+  for (nm in names(defaults)) {
+    if (!nm %in% names(df)) {
+      df[[nm]] <- defaults[[nm]]
+    }
+  }
+  df
+}
+
 # Select common columns for combining
 hitter_cols <- c("Name", "Team", "player_type", 
                  "PA", "AB", "H", "HR", "R", "RBI", "SB", "AVG",
@@ -247,28 +256,31 @@ pitcher_cols <- c("Name", "Team", "player_type",
                   "sgp_W", "sgp_SV", "sgp_SO", "sgp_ERA", "sgp_WHIP", "sgp_pitching",
                   "p_c", "p_1b", "p_2b", "p_3b", "p_ss", "p_of", "p_ci", "p_mi", "p_dh", "p_sp", "p_rp")
 
-# Add missing columns
+# Add missing columns without overwriting two-way player stats (e.g., Ohtani)
 hitters_final <- hitters_sgp %>%
+  { ensure_columns(., list(
+      IP = NA_real_, W = NA_real_, SV = NA_real_, SO = NA_real_,
+      ERA = NA_real_, WHIP = NA_real_,
+      sgp_W = NA_real_, sgp_SV = NA_real_, sgp_SO = NA_real_, sgp_ERA = NA_real_, sgp_WHIP = NA_real_,
+      sgp_pitching = NA_real_
+    )) } %>%
   mutate(
-    IP = NA_real_, W = NA_real_, SV = NA_real_, 
-    sgp_W = 0, sgp_SV = 0, sgp_SO = 0, sgp_ERA = 0, sgp_WHIP = 0
-  ) %>%
-  # Keep pitching stats for Ohtani
-  mutate(
-    IP = ifelse(player_type == "two-way", IP, NA_real_),
-    W = ifelse(player_type == "two-way", W, NA_real_),
-    SV = ifelse(player_type == "two-way", SV, NA_real_),
-    SO = ifelse(player_type == "two-way", SO, NA_real_),
-    ERA = ifelse(player_type == "two-way", ERA, NA_real_),
-    WHIP = ifelse(player_type == "two-way", WHIP, NA_real_),
-    sgp_W = ifelse(player_type == "two-way", sgp_W, 0),
-    sgp_SV = ifelse(player_type == "two-way", sgp_SV, 0),
-    sgp_SO = ifelse(player_type == "two-way", sgp_SO, 0),
-    sgp_ERA = ifelse(player_type == "two-way", sgp_ERA, 0),
-    sgp_WHIP = ifelse(player_type == "two-way", sgp_WHIP, 0),
-    sgp_pitching = ifelse(player_type == "two-way", sgp_pitching, 0)
-  ) %>%
-  mutate(sgp_total = sgp_hitting + sgp_pitching)
+    # Ensure non-two-way hitters have clean pitching columns
+    IP = if_else(player_type == "two-way", IP, NA_real_),
+    W = if_else(player_type == "two-way", W, NA_real_),
+    SV = if_else(player_type == "two-way", SV, NA_real_),
+    SO = if_else(player_type == "two-way", SO, NA_real_),
+    ERA = if_else(player_type == "two-way", ERA, NA_real_),
+    WHIP = if_else(player_type == "two-way", WHIP, NA_real_),
+    # Ensure pitcher SGP is 0 for non-two-way hitters
+    sgp_W = if_else(player_type == "two-way", coalesce(sgp_W, 0), 0),
+    sgp_SV = if_else(player_type == "two-way", coalesce(sgp_SV, 0), 0),
+    sgp_SO = if_else(player_type == "two-way", coalesce(sgp_SO, 0), 0),
+    sgp_ERA = if_else(player_type == "two-way", coalesce(sgp_ERA, 0), 0),
+    sgp_WHIP = if_else(player_type == "two-way", coalesce(sgp_WHIP, 0), 0),
+    sgp_pitching = if_else(player_type == "two-way", coalesce(sgp_pitching, 0), 0),
+    sgp_total = sgp_hitting + sgp_pitching
+  )
 
 pitchers_final <- pitchers_sgp %>%
   mutate(
