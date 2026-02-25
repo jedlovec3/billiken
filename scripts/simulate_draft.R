@@ -20,26 +20,16 @@ DEFAULT_SALARY <- 1
 # Number of teams
 N_TEAMS <- 10
 
-# Team names
+# Team names (uppercase to match preseason_rosters.csv)
 TEAM_NAMES <- c(
-  "Blue Socks", "Free At Last", "Melonheads", "Free Birds", 
-  "Westside Marauders", "Louisville Sluggers", "Hoosiers", 
-  "Erie Lakers", "National Pastime", "Big Red Machine"
-)
-
-# Roster structure (no DH)
-# 9P, 2C, 1 1B, 1 2B, 1 3B, 1 SS, 5 OF, 1 CI, 1 MI, 1 Util = 23 slots
-ROSTER_POSITIONS <- c(
-  rep("p", 9),
-  rep("c", 2),
-  "1b", "2b", "3b", "ss",
-  rep("of", 5),
-  "ci", "mi", "util"
+  "BLUE SOCKS", "FREE AT LAST", "MELONHEADS", "FREE BIRDS", 
+  "WESTSIDE MARAUDERS", "LOUISVILLE SLUGGERS", "HOOSIERS", 
+  "ERIE LAKERS", "NATIONAL PASTIME", "BIG RED MACHINE"
 )
 
 # Replacement levels by position (for slot assignment priority - lower = scarcer)
 REPLACEMENT_LEVELS <- tibble(
-  pos = c("c", "1b", "2b", "3b", "ss", "of", "ci", "mi", "util", "p"),
+  pos = c("C", "1B", "2B", "3B", "SS", "OF", "CI", "MI", "Util", "P"),
   repl_level = c(1.2, 3.0, 3.2, 2.4, 3.6, 2.3, 2.6, 3.2, 3.7, 3.1)
 )
 
@@ -47,69 +37,52 @@ REPLACEMENT_LEVELS <- tibble(
 # DATA LOADING FUNCTIONS
 # ============================================================================
 
-#' Load keepers - uses frozen rosters if available, otherwise projected keepers
-load_keepers <- function() {
-  keepers_path <- "../data/raw/keepers.csv"
-  projected_path <- "../data/processed/projected_keepers.csv"
-  
-  # Check if keepers.csv exists and has all teams
-  if (file.exists(keepers_path)) {
-    keepers <- read_csv(keepers_path, show_col_types = FALSE)
-    
-    # Check if all teams have at least one keeper
-    teams_with_keepers <- keepers %>% 
-      filter(!is.na(billikenTeam)) %>% 
-      distinct(billikenTeam) %>% 
-      pull()
-    
-    if (length(teams_with_keepers) == N_TEAMS) {
-      message("Using frozen rosters from keepers.csv")
-      return(keepers %>% 
-               filter(!is.na(Name)) %>%
-               mutate(across(c("salary"), ~ifelse(is.na(.), DEFAULT_SALARY, .))))
-    }
-  }
-  
-  # Fall back to projected keepers
-  message("Using projected keepers from projected_keepers.csv")
-  keepers <- read_csv(projected_path, show_col_types = FALSE) %>% 
-    filter(!is.na(Name)) %>%
-    mutate(across(c("salary"), ~ifelse(is.na(.), DEFAULT_SALARY, .)))
-  
-  return(keepers)
-}
-
-#' Load draft order and completed picks from draft_latest.csv
-load_draft_order <- function() {
-  draft <- read_csv("../data/raw/draft_latest.csv", show_col_types = FALSE)
-  
-  # Clean up the draft data
-  draft_order <- draft %>%
-    rename(player = `Player...1`, billikenTeam = Team, salary = Salary) %>%
-    mutate(
-      salary = as.numeric(salary),
-      salary = ifelse(is.na(salary), DEFAULT_SALARY, salary)
-    ) %>%
-    filter(!is.na(billikenTeam)) %>%
-    select(player, Round, Pick, billikenTeam, salary)
-  
-  return(draft_order)
-}
-
-#' Load draft eligible players pool
+#' Load player projections with roster assignments and salaries
 load_draft_pool <- function() {
-  pool <- read_csv("../data/processed/projected_draft_eligible.csv", show_col_types = FALSE)
+  # Load projected player values (projections + position eligibility + sgpar)
+  player_value <- read_csv("../data/processed/projected_player_value.csv", show_col_types = FALSE)
   
-  # Ensure position columns exist and are numeric
-  pos_cols <- c("p_c", "p_1b", "p_2b", "p_3b", "p_ss", "p_of", "p_ci", "p_mi")
-  for (col in pos_cols) {
-    if (!col %in% names(pool)) {
-      pool[[col]] <- 0
-    }
-    pool[[col]] <- replace_na(pool[[col]], 0)
+  # Load preseason rosters (keepers + drafted players with billikenTeam, contract, salary)
+  rosters_raw <- read_csv("../data/processed/preseason_rosters.csv", show_col_types = FALSE)
+  
+  # Filter to actual rostered players (non-NA Player)
+  rosters <- rosters_raw %>%
+    filter(!is.na(Player)) %>%
+    rename(Name = Player, contract = Contract, salary = Salary) %>%
+    mutate(salary = as.numeric(gsub("\\$", "", salary))) %>%
+    select(Name, billikenTeam, contract, salary)
+  
+  # Join roster info to player values (only if there are rostered players)
+  if (nrow(rosters) > 0) {
+    pool <- player_value %>%
+      left_join(rosters, by = "Name")
+  } else {
+    # No keepers yet - add empty columns
+    pool <- player_value %>%
+      mutate(billikenTeam = NA_character_, contract = NA_character_, salary = NA_real_)
   }
   
-  # Add pitcher flag based on IP
+  # For players NOT on a roster (billikenTeam is NA), get salary from salaries_latest.csv
+  salaries <- load_salaries()
+  
+  if (nrow(salaries) > 0) {
+    pool <- pool %>%
+      left_join(salaries %>% rename(lookup_salary = salary), by = "Name") %>%
+      mutate(
+        # For non-rostered players: contract = "1", salary from lookup or default to $1
+        contract = ifelse(is.na(billikenTeam), "1", contract),
+        salary = ifelse(is.na(billikenTeam), coalesce(lookup_salary, DEFAULT_SALARY), salary)
+      ) %>%
+      select(-lookup_salary)
+  } else {
+    pool <- pool %>%
+      mutate(
+        contract = ifelse(is.na(billikenTeam), "1", contract),
+        salary = ifelse(is.na(billikenTeam), DEFAULT_SALARY, salary)
+      )
+  }
+  
+  # Add pitcher flag based on IP for position eligibility
   pool <- pool %>%
     mutate(p_p = ifelse(!is.na(IP) & IP > 0, 1, 0))
   
@@ -120,7 +93,7 @@ load_draft_pool <- function() {
   return(pool)
 }
 
-#' Load salaries for players not in keeper list
+#' Load salaries for non-rostered players
 load_salaries <- function() {
   salaries_path <- "../data/raw/salaries_latest.csv"
   
@@ -144,79 +117,87 @@ load_salaries <- function() {
   return(salaries)
 }
 
-#' Load position eligibility
-load_positions <- function() {
-  positions <- read_csv("../data/raw/positions_latest.csv", show_col_types = FALSE) %>%
+#' Load preseason rosters (already has keeper and drafted player assignments)
+load_rosters <- function() {
+  rosters <- read_csv("../data/processed/preseason_rosters.csv", show_col_types = FALSE) %>%
+    rename(team = billikenTeam, pos = Position, player = Player, contract = Contract, salary = Salary) %>%
     mutate(
-      p_of = case_when(RF == 1 ~ 1, CF == 1 ~ 1, LF == 1 ~ 1, .default = 0),
-      p_ci = case_when(`1B` == 1 ~ 1, `3B` == 1 ~ 1, .default = 0),
-      p_mi = case_when(`2B` == 1 ~ 1, SS == 1 ~ 1, .default = 0)
+      # Ensure player column is character type even when all NA
+      player = as.character(player),
+      salary = as.numeric(gsub("\\$", "", salary))
     ) %>%
-    rename(Name = PLAYER, p_c = C, p_1b = `1B`, p_2b = `2B`, p_3b = `3B`, p_ss = SS) %>%
-    select(Name, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi)
-  
-  return(positions)
-}
-
-# ============================================================================
-# ROSTER MANAGEMENT FUNCTIONS
-# ============================================================================
-
-#' Create empty rosters for all teams
-create_empty_rosters <- function() {
-  # Create a tibble with one row per team x position slot
-  rosters <- expand_grid(team = TEAM_NAMES, pos = ROSTER_POSITIONS) %>%
     group_by(team) %>%
     mutate(slot_id = row_number()) %>%
-    ungroup() %>%
-    mutate(
-      player = NA_character_,
-      salary = NA_real_,
-      # Position eligibility flags for the slot
-      p_c = ifelse(pos == "c", 1, 0),
-      p_1b = ifelse(pos == "1b", 1, 0),
-      p_2b = ifelse(pos == "2b", 1, 0),
-      p_3b = ifelse(pos == "3b", 1, 0),
-      p_ss = ifelse(pos == "ss", 1, 0),
-      p_of = ifelse(pos == "of", 1, 0),
-      p_ci = ifelse(pos == "ci", 1, 0),
-      p_mi = ifelse(pos == "mi", 1, 0),
-      p_util = ifelse(pos == "util", 1, 0),
-      p_p = ifelse(pos == "p", 1, 0)
-    )
+    ungroup()
   
   return(rosters)
+}
+
+#' Load simulated keepers (used when actual keepers haven't been filled in yet)
+load_simulated_keepers <- function() {
+  keepers_path <- "../data/processed/simulated_keepers.csv"
+  
+  if (!file.exists(keepers_path)) {
+    return(tibble())
+  }
+  
+  keepers <- read_csv(keepers_path, show_col_types = FALSE) %>%
+    filter(!is.na(Name) & !is.na(billikenTeam)) %>%
+    select(Name, billikenTeam, slot, contract, salary)
+  
+  return(keepers)
+}
+
+#' Load draft order from draft_latest.csv
+load_draft_order <- function() {
+  draft <- read_csv("../data/raw/draft_latest.csv", show_col_types = FALSE)
+  
+  # Clean up the draft data
+  # Uppercase team names to match preseason_rosters format
+  draft_order <- draft %>%
+    rename(player = Player, billikenTeam = Team, salary = Salary) %>%
+    mutate(
+      billikenTeam = toupper(billikenTeam),
+      salary = as.numeric(salary),
+      salary = ifelse(is.na(salary), DEFAULT_SALARY, salary)
+    ) %>%
+    filter(!is.na(billikenTeam)) %>%
+    select(player, Round, Pick, billikenTeam, salary)
+  
+  return(draft_order)
 }
 
 #' Get positions a player is eligible for
 get_player_positions <- function(player_row) {
   positions <- c()
   
+  # Check if pitcher
   if (!is.null(player_row$p_p) && !is.na(player_row$p_p) && player_row$p_p == 1) {
-    return(c("p"))  # Pitchers can only play pitcher
+    return(c("P"))
+  }
+  if (!is.null(player_row$p_sp) && !is.na(player_row$p_sp) && player_row$p_sp == 1) {
+    return(c("P"))
+  }
+  if (!is.null(player_row$p_rp) && !is.na(player_row$p_rp) && player_row$p_rp == 1) {
+    return(c("P"))
   }
   
-  if (!is.null(player_row$p_c) && !is.na(player_row$p_c) && player_row$p_c == 1) positions <- c(positions, "c")
-  if (!is.null(player_row$p_1b) && !is.na(player_row$p_1b) && player_row$p_1b == 1) positions <- c(positions, "1b", "ci")
-  if (!is.null(player_row$p_2b) && !is.na(player_row$p_2b) && player_row$p_2b == 1) positions <- c(positions, "2b", "mi")
-  if (!is.null(player_row$p_3b) && !is.na(player_row$p_3b) && player_row$p_3b == 1) positions <- c(positions, "3b", "ci")
-  if (!is.null(player_row$p_ss) && !is.na(player_row$p_ss) && player_row$p_ss == 1) positions <- c(positions, "ss", "mi")
-  if (!is.null(player_row$p_of) && !is.na(player_row$p_of) && player_row$p_of == 1) positions <- c(positions, "of")
-  if (!is.null(player_row$p_ci) && !is.na(player_row$p_ci) && player_row$p_ci == 1) positions <- c(positions, "ci")
-  if (!is.null(player_row$p_mi) && !is.na(player_row$p_mi) && player_row$p_mi == 1) positions <- c(positions, "mi")
+  if (!is.null(player_row$p_c) && !is.na(player_row$p_c) && player_row$p_c == 1) positions <- c(positions, "C")
+  if (!is.null(player_row$p_1b) && !is.na(player_row$p_1b) && player_row$p_1b == 1) positions <- c(positions, "1B", "CI")
+  if (!is.null(player_row$p_2b) && !is.na(player_row$p_2b) && player_row$p_2b == 1) positions <- c(positions, "2B", "MI")
+  if (!is.null(player_row$p_3b) && !is.na(player_row$p_3b) && player_row$p_3b == 1) positions <- c(positions, "3B", "CI")
+  if (!is.null(player_row$p_ss) && !is.na(player_row$p_ss) && player_row$p_ss == 1) positions <- c(positions, "SS", "MI")
+  if (!is.null(player_row$p_of) && !is.na(player_row$p_of) && player_row$p_of == 1) positions <- c(positions, "OF")
+  if (!is.null(player_row$p_ci) && !is.na(player_row$p_ci) && player_row$p_ci == 1) positions <- c(positions, "CI")
+  if (!is.null(player_row$p_mi) && !is.na(player_row$p_mi) && player_row$p_mi == 1) positions <- c(positions, "MI")
+  if (!is.null(player_row$p_dh) && !is.na(player_row$p_dh) && player_row$p_dh == 1) positions <- c(positions, "Util")
   
   # All hitters can play utility
-  if (length(positions) > 0 || (!is.null(player_row$p_util) && !is.na(player_row$p_util) && player_row$p_util == 1)) {
-    positions <- c(positions, "util")
+  if (length(positions) > 0) {
+    positions <- c(positions, "Util")
   }
   
   return(unique(positions))
-}
-
-#' Check if a player can be assigned to a roster slot
-can_fill_slot <- function(player_row, slot_pos) {
-  player_positions <- get_player_positions(player_row)
-  return(slot_pos %in% player_positions)
 }
 
 #' Calculate team's current salary
@@ -228,7 +209,6 @@ calculate_team_salary <- function(rosters, team_name) {
 }
 
 #' Find the best slot for a player on a team's roster
-#' Returns the slot_id or NA if no slot available
 find_best_slot <- function(rosters, team_name, player_row) {
   team_roster <- rosters %>%
     filter(team == team_name)
@@ -248,7 +228,7 @@ find_best_slot <- function(rosters, team_name, player_row) {
   eligible_slots <- open_slots %>%
     filter(pos %in% player_positions) %>%
     left_join(REPLACEMENT_LEVELS, by = "pos") %>%
-    arrange(repl_level) %>%  # Assign to scarcest position first
+    arrange(repl_level) %>%
     slice(1)
   
   if (nrow(eligible_slots) == 0) return(NA_integer_)
@@ -257,28 +237,21 @@ find_best_slot <- function(rosters, team_name, player_row) {
 }
 
 #' Assign a player to a team's roster
-#' Returns updated rosters tibble
-assign_player <- function(rosters, team_name, player_name, player_salary, player_row) {
+assign_player <- function(rosters, team_name, player_name, player_salary, player_contract, player_row) {
   slot_id <- find_best_slot(rosters, team_name, player_row)
   
   if (is.na(slot_id)) {
-    # warning(paste("Could not assign", player_name, "to", team_name, "- no eligible slot"))
     return(rosters)
   }
   
   rosters <- rosters %>%
     mutate(
       player = ifelse(team == team_name & slot_id == !!slot_id, player_name, player),
-      salary = ifelse(team == team_name & slot_id == !!slot_id, player_salary, salary)
+      salary = ifelse(team == team_name & slot_id == !!slot_id, player_salary, salary),
+      contract = ifelse(team == team_name & slot_id == !!slot_id, player_contract, contract)
     )
   
   return(rosters)
-}
-
-#' Check if a team can add a player (salary cap check)
-can_add_player <- function(rosters, team_name, player_salary) {
-  current_salary <- calculate_team_salary(rosters, team_name)
-  return((current_salary + player_salary) <= SALARY_CAP)
 }
 
 #' Check if team has any open roster slots
@@ -294,49 +267,37 @@ has_open_slots <- function(rosters, team_name) {
 # DRAFT SIMULATION FUNCTIONS
 # ============================================================================
 
-#' Fill rosters with keepers
-fill_keepers <- function(rosters, keepers, player_pool) {
-  for (i in 1:nrow(keepers)) {
-    player_name <- keepers$Name[i]
-    team_name <- keepers$billikenTeam[i]
-    player_salary <- keepers$salary[i]
+#' Fill simulated keepers into rosters (when actual keepers haven't been set)
+fill_simulated_keepers <- function(rosters, simulated_keepers, player_pool) {
+  # Check if rosters already have keepers filled in
+  filled_count <- rosters %>%
+    filter(!is.na(player)) %>%
+    nrow()
+  
+  if (filled_count > 0) {
+    # Keepers already filled in, don't use simulated
+    return(rosters)
+  }
+  
+  if (nrow(simulated_keepers) == 0) {
+    return(rosters)
+  }
+  
+  for (i in 1:nrow(simulated_keepers)) {
+    player_name <- simulated_keepers$Name[i]
+    # Uppercase team name to match preseason_rosters format
+    team_name <- toupper(simulated_keepers$billikenTeam[i])
+    player_salary <- simulated_keepers$salary[i]
+    player_contract <- as.character(simulated_keepers$contract[i])
     
     if (is.na(team_name)) next
     
     # Find player in pool for position eligibility
     player_row <- player_pool %>% filter(Name == player_name)
     
-    if (nrow(player_row) == 0) {
-      # Try fuzzy match
-      player_row <- keepers[i, ]
-    }
-    
-    rosters <- assign_player(rosters, team_name, player_name, player_salary, player_row)
-  }
-  
-  return(rosters)
-}
-
-#' Fill rosters with already-drafted players
-fill_drafted_players <- function(rosters, draft_order, player_pool) {
-  drafted <- draft_order %>%
-    filter(!is.na(player) & player != "")
-  
-  if (nrow(drafted) == 0) return(rosters)
-  
-  for (i in 1:nrow(drafted)) {
-    player_name <- drafted$player[i]
-    team_name <- drafted$billikenTeam[i]
-    player_salary <- drafted$salary[i]
-    
-    if (is.na(player_name) || player_name == "") next
-    
-    # Find player in pool for position eligibility
-    player_row <- player_pool %>% filter(Name == player_name)
-    
     if (nrow(player_row) == 0) next
     
-    rosters <- assign_player(rosters, team_name, player_name, player_salary, player_row)
+    rosters <- assign_player(rosters, team_name, player_name, player_salary, player_contract, player_row)
   }
   
   return(rosters)
@@ -353,7 +314,6 @@ get_next_pick <- function(draft_order) {
     return(list(team = NA, round = NA, pick = NA, idx = NA))
   }
   
-  # Find the row index in original draft_order
   idx <- which(draft_order$Round == next_pick$Round[1] & 
                  draft_order$Pick == next_pick$Pick[1] &
                  (is.na(draft_order$player) | draft_order$player == ""))[1]
@@ -368,13 +328,15 @@ get_next_pick <- function(draft_order) {
 
 #' Get available players for a team
 get_available_players <- function(rosters, player_pool, team_name) {
-  # Get players not on any roster
+  # Get players not on any roster (billikenTeam is NA in the pool)
+  # Also exclude anyone already assigned in this simulation's rosters
   rostered_players <- rosters %>%
     filter(!is.na(player)) %>%
     pull(player) %>%
     unique()
   
   available <- player_pool %>%
+    filter(is.na(billikenTeam)) %>%
     filter(!Name %in% rostered_players)
   
   # Get team's open slots
@@ -393,7 +355,7 @@ get_available_players <- function(rosters, player_pool, team_name) {
     rowwise() %>%
     mutate(
       can_fill = {
-        positions <- get_player_positions(cur_data())
+        positions <- get_player_positions(pick(everything()))
         any(positions %in% open_slots)
       }
     ) %>%
@@ -404,14 +366,12 @@ get_available_players <- function(rosters, player_pool, team_name) {
   return(eligible_players)
 }
 
-#' Make a single draft pick
-#' Returns list with updated rosters, draft_order, player_pool, and selected player name
-make_pick <- function(rosters, draft_order, player_pool, randomness_sd = 2) {
-  # Get next pick info
+#' Make a single draft pick using sgpar with percentage randomness
+make_pick <- function(rosters, draft_order, player_pool, randomness_pct = 0.10) {
   next_pick <- get_next_pick(draft_order)
   
   if (is.na(next_pick$team)) {
-    return(list(rosters = rosters, draft_order = draft_order, player_pool = player_pool, picked = NA))
+    return(list(rosters = rosters, draft_order = draft_order, picked = NA))
   }
   
   team_name <- next_pick$team
@@ -419,7 +379,7 @@ make_pick <- function(rosters, draft_order, player_pool, randomness_sd = 2) {
   # Check if team has open slots
   if (!has_open_slots(rosters, team_name)) {
     draft_order$player[next_pick$idx] <- "pass"
-    return(list(rosters = rosters, draft_order = draft_order, player_pool = player_pool, picked = "pass"))
+    return(list(rosters = rosters, draft_order = draft_order, picked = "pass"))
   }
   
   # Get eligible players
@@ -427,69 +387,62 @@ make_pick <- function(rosters, draft_order, player_pool, randomness_sd = 2) {
   
   if (nrow(eligible) == 0) {
     draft_order$player[next_pick$idx] <- "pass"
-    return(list(rosters = rosters, draft_order = draft_order, player_pool = player_pool, picked = "pass"))
+    return(list(rosters = rosters, draft_order = draft_order, picked = "pass"))
   }
   
   # Filter by salary cap
   current_salary <- calculate_team_salary(rosters, team_name)
   remaining_cap <- SALARY_CAP - current_salary
   
-  # Filter players who can fit under cap
   eligible <- eligible %>%
     mutate(player_salary = ifelse(is.na(salary), DEFAULT_SALARY, salary)) %>%
     filter(player_salary <= remaining_cap)
   
   if (nrow(eligible) == 0) {
     draft_order$player[next_pick$idx] <- "pass"
-    return(list(rosters = rosters, draft_order = draft_order, player_pool = player_pool, picked = "pass"))
+    return(list(rosters = rosters, draft_order = draft_order, picked = "pass"))
   }
   
-  # Add randomness and select best player
+  # Add percentage randomness to sgpar and select best player
+  # rand_sgpar = sgpar * (1 + uniform(-randomness_pct, +randomness_pct))
   eligible <- eligible %>%
     mutate(
-      rand = rnorm(n(), mean = 0, sd = randomness_sd),
-      rand_ev = ev + rand
+      rand_factor = runif(n(), min = 1 - randomness_pct, max = 1 + randomness_pct),
+      rand_sgpar = sgpar * rand_factor
     ) %>%
-    arrange(desc(rand_ev))
+    arrange(desc(rand_sgpar))
   
   selected_player <- eligible %>% slice(1)
   player_name <- selected_player$Name[1]
   player_salary <- ifelse(is.na(selected_player$salary[1]), DEFAULT_SALARY, selected_player$salary[1])
+  player_contract <- ifelse(is.na(selected_player$contract[1]), "1", selected_player$contract[1])
   
   # Assign player to roster
-  rosters <- assign_player(rosters, team_name, player_name, player_salary, selected_player)
+  rosters <- assign_player(rosters, team_name, player_name, player_salary, player_contract, selected_player)
   
   # Update draft order
   draft_order$player[next_pick$idx] <- player_name
   draft_order$salary[next_pick$idx] <- player_salary
   
-  return(list(rosters = rosters, draft_order = draft_order, player_pool = player_pool, picked = player_name))
+  return(list(rosters = rosters, draft_order = draft_order, picked = player_name))
 }
 
 #' Run one complete draft simulation
-simulate_draft <- function(keepers, draft_order_template, player_pool, randomness_sd = 2) {
-  # Create fresh rosters
-  rosters <- create_empty_rosters()
-  
-  # Make a copy of draft order for this simulation
+simulate_draft <- function(rosters_template, draft_order_template, player_pool, randomness_pct = 0.10) {
+  # Make copies for this simulation
+  rosters <- rosters_template
   draft_order <- draft_order_template
-  
-  # Fill keepers
-  rosters <- fill_keepers(rosters, keepers, player_pool)
-  
-  # Fill already-drafted players
-  rosters <- fill_drafted_players(rosters, draft_order, player_pool)
   
   # Simulate remaining picks
   max_picks <- nrow(draft_order)
   picks_made <- 0
   
   while (picks_made < max_picks) {
-    result <- make_pick(rosters, draft_order, player_pool, randomness_sd)
+    result <- make_pick(rosters, draft_order, player_pool, randomness_pct)
     rosters <- result$rosters
     draft_order <- result$draft_order
     
-    if (is.na(result$picked)) break  # No more picks available
+    if (is.na(result$picked)) break
     
     picks_made <- picks_made + 1
   }
@@ -509,8 +462,16 @@ calculate_standings <- function(rosters, player_pool, sim_num = 1) {
     select(team, player, salary)
   
   # Join with player pool to get stats
+  # Derive ER and WH (walks + hits) from ERA, WHIP, and IP:
+  #   ER = ERA * IP / 9
+  #   WH = WHIP * IP
   roster_stats <- rostered %>%
-    left_join(player_pool %>% select(Name, PA, AB, H, HR, R, RBI, SB, AVG, IP, W, SV, SO, ER, ERA, WHIP, point_value, par, ev),
+    left_join(player_pool %>% 
+                select(Name, PA, AB, H, HR, R, RBI, SB, AVG, IP, W, SV, SO, ERA, WHIP, sgpar) %>%
+                mutate(
+                  ER = ifelse(!is.na(IP) & IP > 0, ERA * IP / 9, NA_real_),
+                  WH = ifelse(!is.na(IP) & IP > 0, WHIP * IP, NA_real_)
+                ),
               by = c("player" = "Name"))
   
   # Compute team totals
@@ -519,9 +480,7 @@ calculate_standings <- function(rosters, player_pool, sim_num = 1) {
     summarise(
       n = n(),
       total_salary = sum(salary, na.rm = TRUE),
-      point_value = sum(point_value, na.rm = TRUE),
-      par = sum(par, na.rm = TRUE),
-      ev = sum(ev, na.rm = TRUE),
+      sgpar = sum(sgpar, na.rm = TRUE),
       PA = sum(PA, na.rm = TRUE),
       AB = sum(AB, na.rm = TRUE),
       H = sum(H, na.rm = TRUE),
@@ -535,8 +494,9 @@ calculate_standings <- function(rosters, player_pool, sim_num = 1) {
       SV = sum(SV, na.rm = TRUE),
       SO = sum(SO, na.rm = TRUE),
       ER = sum(ER, na.rm = TRUE),
+      WH = sum(WH, na.rm = TRUE),
       ERA = sum(ER, na.rm = TRUE) * 9 / sum(IP, na.rm = TRUE),
-      WHIP = (sum(H[!is.na(IP) & IP > 0], na.rm = TRUE) + sum(IP, na.rm = TRUE) * 0.3) / sum(IP, na.rm = TRUE),  # Approximate WHIP
+      WHIP = sum(WH, na.rm = TRUE) / sum(IP, na.rm = TRUE),
       .groups = "drop"
     )
   
@@ -571,24 +531,16 @@ calculate_standings <- function(rosters, player_pool, sim_num = 1) {
 # ============================================================================
 
 #' Run multiple draft simulations
-run_simulations <- function(n_sims = 20, randomness_sd = 2, verbose = TRUE) {
+run_simulations <- function(n_sims = 20, randomness_pct = 0.10, verbose = TRUE) {
   # Load data
   if (verbose) message("Loading data...")
-  keepers <- load_keepers()
-  draft_order_template <- load_draft_order()
   player_pool <- load_draft_pool()
+  rosters_template <- load_rosters()
+  simulated_keepers <- load_simulated_keepers()
+  draft_order_template <- load_draft_order()
   
-  # Add any missing salaries (handle case where salaries is empty)
-  salaries <- load_salaries()
-  if (nrow(salaries) > 0) {
-    player_pool <- player_pool %>%
-      left_join(salaries %>% rename(salary_lookup = salary), by = "Name") %>%
-      mutate(salary = coalesce(salary, salary_lookup, DEFAULT_SALARY)) %>%
-      select(-salary_lookup)
-  } else {
-    player_pool <- player_pool %>%
-      mutate(salary = coalesce(salary, DEFAULT_SALARY))
-  }
+  # Fill simulated keepers if actual keepers haven't been set
+  rosters_template <- fill_simulated_keepers(rosters_template, simulated_keepers, player_pool)
   
   # Run simulations
   all_standings <- tibble()
@@ -597,7 +549,7 @@ run_simulations <- function(n_sims = 20, randomness_sd = 2, verbose = TRUE) {
     if (verbose) message(sprintf("Running simulation %d/%d...", i, n_sims))
     
     suppressWarnings({
-      result <- simulate_draft(keepers, draft_order_template, player_pool, randomness_sd)
+      result <- simulate_draft(rosters_template, draft_order_template, player_pool, randomness_pct)
       standings <- calculate_standings(result$rosters, player_pool, sim_num = i)
     })
     
@@ -617,6 +569,7 @@ summarize_simulations <- function(all_standings) {
       top_3 = sum(rank <= 3),
       avg_rank = mean(rank),
       avg_pts = mean(total_pts),
+      avg_sgpar = mean(sgpar),
       avg_hit_pts = mean(hit_pts),
       avg_pit_pts = mean(pit_pts),
       min_pts = min(total_pts),
@@ -635,7 +588,7 @@ summarize_simulations <- function(all_standings) {
 # Run the simulations
 message("\n=== Billiken League Draft Simulation ===\n")
 
-all_standings <- run_simulations(n_sims = 20, randomness_sd = 2)
+all_standings <- run_simulations(n_sims = 20, randomness_pct = 0.10)
 
 # Summarize results
 summary <- summarize_simulations(all_standings)
@@ -646,7 +599,7 @@ print(summary, n = N_TEAMS)
 # Blue Socks specific analysis
 message("\n=== Blue Socks Analysis ===\n")
 blue_socks <- all_standings %>%
-  filter(team == "Blue Socks")
+  filter(team == "BLUE SOCKS")
 
 message(sprintf("Average rank: %.2f", mean(blue_socks$rank)))
 message(sprintf("Wins: %d/%d (%.1f%%)", sum(blue_socks$rank == 1), nrow(blue_socks), 100 * mean(blue_socks$rank == 1)))
