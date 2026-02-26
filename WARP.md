@@ -141,13 +141,29 @@ The SGP pipeline calculates player values based on historical standings data and
    - Roster structure: 2C, 1-1B, 1-2B, 1-3B, 1-SS, 5-OF, 1-MI, 1-CI, 1-Util, 9-P per team
    - Outputs: `data/processed/optimal_rosters_sgp.csv`, `replacement_levels_sgp.csv`
 
+### Draft simulation
+
+6. **`simulate_draft.R`** - Simulates draft outcomes to evaluate team projections
+   ```sh
+   Rscript scripts/simulate_draft.R
+   ```
+   - Runs multiple draft simulations (default 20) with randomized player selection
+   - Uses `sgpar` (standings gained points above replacement) to rank players, with configurable percentage randomness (default 10%)
+   - Loads keepers from `data/processed/preseason_rosters.csv`, falling back to `data/processed/simulated_keepers.csv` if keepers aren't set
+   - Loads draft order from `data/raw/draft_latest.csv`
+   - Respects salary cap ($270) and roster structure (2C, 1B, 2B, 3B, SS, 5 OF, CI, MI, Util, 9P per team)
+   - Calculates projected standings for each simulation across all roto categories
+   - Outputs summary statistics: average rank, wins, top-3 finishes, and point ranges by team
+   - Team names are normalized to uppercase internally to match `preseason_rosters.csv` format
+
 ### Other scripts
 
 - **`download_fangraphs_projections.R`** - Downloads projections (called by `draft_day_update.R`)
 - **`fetch_espn_positions.R`** - Fetches positional eligibility from ESPN API
 - **`fangraphs_login.R`** - Authentication helper for FanGraphs (sourced by download script)
-- **`project_keepers.R`** - Projects keeper roster values
-- **`simulate_draft.R`** - Simulates draft outcomes
+- **`simulate_keepers.R`** - Simulates keeper selections for draft simulation (outputs `data/processed/simulated_keepers.csv`)
+- **`prefreeze_update.R`** - Updates preseason roster data
+- **`update_current_rosters.R`** - Updates current roster state
 
 All scripts respect the `BILLIKEN_PROJECTIONS_YEAR` environment variable (defaults to current year) and filter projections to NL-only teams.
 
