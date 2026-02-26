@@ -36,13 +36,21 @@ message(sprintf("\nLoading %s projections...", projections_year))
 
 hitter_projections <- read_csv(paste0("data/raw/hitter_projections_", projections_year, ".csv"), 
                                 show_col_types = FALSE) %>% 
-  mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII")) %>%
+  { if (!"fg_auction_dollars" %in% names(.)) mutate(., fg_auction_dollars = NA_real_) else . } %>%
+  mutate(
+    Name = stringi::stri_trans_general(Name, "Latin-ASCII"),
+    fg_auction_dollars = as.numeric(fg_auction_dollars)
+  ) %>%
   filter(Team %in% NL_TEAMS) %>%
   mutate(player_type = "hitter")
 
 pitcher_projections <- read_csv(paste0("data/raw/pitcher_projections_", projections_year, ".csv"), 
                                  show_col_types = FALSE) %>%
-  mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII")) %>%
+  { if (!"fg_auction_dollars" %in% names(.)) mutate(., fg_auction_dollars = NA_real_) else . } %>%
+  mutate(
+    Name = stringi::stri_trans_general(Name, "Latin-ASCII"),
+    fg_auction_dollars = as.numeric(fg_auction_dollars)
+  ) %>%
   filter(Team %in% NL_TEAMS) %>%
   mutate(player_type = "pitcher")
 
@@ -259,6 +267,7 @@ pitcher_cols <- c("Name", "Team", "player_type",
 # Add missing columns without overwriting two-way player stats (e.g., Ohtani)
 hitters_final <- hitters_sgp %>%
   { ensure_columns(., list(
+      fg_auction_dollars = NA_real_,
       IP = NA_real_, W = NA_real_, SV = NA_real_, SO = NA_real_,
       ERA = NA_real_, WHIP = NA_real_,
       sgp_W = NA_real_, sgp_SV = NA_real_, sgp_SO = NA_real_, sgp_ERA = NA_real_, sgp_WHIP = NA_real_,
@@ -283,6 +292,7 @@ hitters_final <- hitters_sgp %>%
   )
 
 pitchers_final <- pitchers_sgp %>%
+  { ensure_columns(., list(fg_auction_dollars = NA_real_)) } %>%
   mutate(
     PA = NA_real_, AB = NA_real_, H = NA_real_, HR = NA_real_, 
     R = NA_real_, RBI = NA_real_, SB = NA_real_, AVG = NA_real_,
@@ -292,13 +302,13 @@ pitchers_final <- pitchers_sgp %>%
 
 # Combine
 all_players <- bind_rows(
-  hitters_final %>% select(Name, Team, player_type, PA, AB, H, HR, R, RBI, SB, AVG,
+  hitters_final %>% select(Name, Team, player_type, fg_auction_dollars, PA, AB, H, HR, R, RBI, SB, AVG,
                            IP, W, SV, SO, ERA, WHIP,
                            sgp_R, sgp_HR, sgp_RBI, sgp_SB, sgp_AVG, sgp_hitting,
                            sgp_W, sgp_SV, sgp_SO, sgp_ERA, sgp_WHIP, sgp_pitching,
                            sgp_total,
                            p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi, p_dh, p_sp, p_rp),
-  pitchers_final %>% select(Name, Team, player_type, PA, AB, H, HR, R, RBI, SB, AVG,
+  pitchers_final %>% select(Name, Team, player_type, fg_auction_dollars, PA, AB, H, HR, R, RBI, SB, AVG,
                             IP, W, SV, SO, ERA, WHIP,
                             sgp_R, sgp_HR, sgp_RBI, sgp_SB, sgp_AVG, sgp_hitting,
                             sgp_W, sgp_SV, sgp_SO, sgp_ERA, sgp_WHIP, sgp_pitching,

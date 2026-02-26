@@ -1,341 +1,426 @@
-# project_keepers.R
-# Project keepers for every Billiken League team based on expected value
-# and export draft-eligible players
+# simulate_keepers.R
+# Simulate keeper selections from pre-freeze rosters using SGPAR values.
+#
+# Default (backwards compatible) behavior reads/writes under:
+# - data/raw/prefreeze_rosters_latest.csv
+# - data/processed/projected_player_value.csv
+# - data/processed/{projections_prefreeze.csv, simulated_keepers.csv}
+#
+# This script now supports "what-if" scenarios via a trade overlay.
 
-# Load libraries
-suppressPackageStartupMessages({
-  library(tidyverse)
-  library(fuzzyjoin)
-  library(httr)
-  library(jsonlite)
-})
+simulate_keepers <- function(
+  sgpar_random = 0,
+  prefreeze_rosters_path = "data/raw/prefreeze_rosters_latest.csv",
+  projected_player_value_path = "data/processed/projected_player_value.csv",
+  trades_path = NULL,
+  output_dir = "data/processed",
+  seed = NULL
+) {
+  cat("Running simulation with sgpar_random =", sgpar_random, "\n")
 
-# Set projections year
-projections_year <- Sys.getenv("BILLIKEN_PROJECTIONS_YEAR", unset = "2026")
+  suppressPackageStartupMessages({
+    library(tidyverse)
+    library(stringi)
+  })
 
-# --- Load Data ---
-message("Loading data...")
+  # Optional helpers (for robust paths + trade overlay)
+  if (file.exists("scripts/paths.R")) source("scripts/paths.R")
+  if (file.exists("paths.R")) source("paths.R")
+  if (file.exists("scripts/trade_utils.R")) source("scripts/trade_utils.R")
+  if (file.exists("trade_utils.R")) source("trade_utils.R")
 
-# Load pre-freeze rosters from local CSV
-prefreeze_rosters <- read_csv("data/raw/prefreeze_rosters_latest.csv", show_col_types = FALSE) %>% 
-  filter(!is.na(player)) %>% 
-  mutate(across(c("salary"), ~gsub("\\$", "", .) %>% as.numeric))
+  root <- if (exists("find_project_root")) find_project_root() else getwd()
 
-# Load salaries from local CSV
-salaries <- read_csv("data/raw/salaries_latest.csv", show_col_types = FALSE) %>%
-  rename(new_salary = Salary) %>% 
-  filter(!is.na(Player)) %>%  
-  mutate(across(c("new_salary"), ~gsub("\\$", "", .) %>% as.numeric))
-
-# Read positions from ESPN API
-positions <- read_csv("data/raw/positions_latest.csv", show_col_types = FALSE) %>%
-  mutate(p_of = case_when(RF == 1 ~ 1, CF == 1 ~ 1, LF == 1 ~ 1, .default = 0)) %>%
-  mutate(p_ci = case_when(`1B` == 1 ~ 1, `3B` == 1 ~ 1, .default = 0)) %>%
-  mutate(p_mi = case_when(`2B` == 1 ~ 1, SS == 1 ~ 1, .default = 0)) %>%  
-  rename(player = PLAYER, p_c = C, p_1b = `1B`, p_2b = `2B`, p_3b = `3B`, p_ss = SS) %>% 
-  select(player, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi)
-
-# Load FanGraphs projections
-hitter_projections <- read_csv(paste0("hitter_projections_", projections_year, ".csv"), show_col_types = FALSE) %>% 
-  mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
-
-pitcher_projections <- read_csv(paste0("pitcher_projections_", projections_year, ".csv"), show_col_types = FALSE) %>%
-  mutate(Name = stringi::stri_trans_general(Name, "Latin-ASCII"))
-
-# --- Calculate Team Totals ---
-message("Calculating team totals...")
-
-hitter_team_totals <- hitter_projections %>% 
-  filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
-  stringdist_left_join(prefreeze_rosters, by = c("Name" = "player"), max_dist = 2) %>% 
-  group_by(billikenTeam) %>% 
-  summarize(n=n(), PA = sum(PA), AB = sum(AB), H = sum(H), HR = sum(HR), R = sum(R), RBI = sum(RBI), SB = sum(SB), AVG = sum(H)/sum(AB))
-
-pitcher_team_totals <- pitcher_projections %>% 
-  filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
-  stringdist_left_join(prefreeze_rosters, by = c("Name" = "player"), max_dist = 2) %>% 
-  group_by(billikenTeam) %>% 
-  summarize(n=n(), W = sum(W), SV = sum(SV), IP = sum(IP), SO = sum(SO), ER = sum(ER), H = sum(H), BB = sum(BB), ERA = sum(ER)*9/sum(IP), WHIP = (sum(H)+sum(BB))/sum(IP))
-
-# --- Calculate Team Standings ---
-message("Calculating team standings...")
-
-n_teams <- pull(count(hitter_team_totals %>% filter(!is.na(billikenTeam)) %>% distinct(billikenTeam)))
-
-hitter_points <- hitter_team_totals %>% 
-  filter(!is.na(billikenTeam)) %>% 
-  mutate(hr = n_teams+1 - dense_rank(desc(HR)), r = n_teams+1 - dense_rank(desc(R)), rbi = n_teams+1 - dense_rank(desc(RBI)), sb = n_teams+1 - dense_rank(desc(SB)), avg = n_teams+1 - dense_rank(desc(AVG))) %>% 
-  mutate(hr_pct = (hr-1)/(n_teams-1), r_pct = (r-1)/(n_teams-1), rbi_pct = (rbi-1)/(n_teams-1), sb_pct = (sb-1)/(n_teams-1), avg_pct = (avg-1)/(n_teams-1)) %>% 
-  mutate(hit = hr + r + rbi + sb + avg)
-
-pitcher_points <- pitcher_team_totals %>% 
-  filter(!is.na(billikenTeam)) %>% 
-  mutate(w = n_teams+1 - dense_rank(desc(W)), sv = n_teams+1 - dense_rank(desc(SV)), so = n_teams+1 - dense_rank(desc(SO)), era = n_teams+1 - dense_rank(ERA), whip = n_teams+1 - dense_rank(WHIP)) %>%
-  mutate(w_pct = (w-1)/(n_teams-1), sv_pct = (sv-1)/(n_teams-1), so_pct = (so-1)/(n_teams-1), era_pct = (era-1)/(n_teams-1), whip_pct = (whip-1)/(n_teams-1)) %>%
-  mutate(pit = w + sv + so + era + whip)
-
-# --- Build Models ---
-message("Building statistical models...")
-
-# Linear models by category
-hr_model <- lm(hr ~ HR, hitter_points) 
-r_model <- lm(r ~ R, hitter_points) 
-rbi_model <- lm(rbi ~ RBI, hitter_points) 
-sb_model <- lm(sb ~ SB, hitter_points) 
-avg_model <- lm(avg ~ AVG, hitter_points) 
-
-w_model <- lm(w ~ W, pitcher_points) 
-sv_model <- lm(sv ~ SV, pitcher_points) 
-so_model <- lm(so ~ SO, pitcher_points) 
-era_model <- lm(era ~ ERA, pitcher_points) 
-whip_model <- lm(whip ~ WHIP, pitcher_points) 
-
-# Extract coefficients
-hr_factor <- hr_model$coefficients["HR"]
-r_factor <- r_model$coefficients["R"]
-rbi_factor <- rbi_model$coefficients["RBI"]
-sb_factor <- sb_model$coefficients["SB"]
-avg_factor <- avg_model$coefficients["AVG"]
-
-w_factor <- w_model$coefficients["W"]
-sv_factor <- sv_model$coefficients["SV"]
-so_factor <- so_model$coefficients["SO"]
-era_factor <- era_model$coefficients["ERA"]
-whip_factor <- whip_model$coefficients["WHIP"]
-
-# Baseline stats
-baseline_ab <- 5000
-baseline_avg <- .255
-baseline_h <- baseline_ab*baseline_avg
-
-baseline_ip <- 1200
-baseline_era <- 4.05
-baseline_whip <- 1.24
-baseline_er <- baseline_ip*baseline_era/9
-baseline_wh <- baseline_ip*baseline_whip
-
-# --- Calculate Point Values ---
-message("Calculating player point values...")
-
-hitter_projections <- hitter_projections %>% 
-  mutate(point_value = round(HR * hr_factor + R * r_factor + RBI * rbi_factor + SB * sb_factor + avg_factor * ((baseline_h + H)/(baseline_ab + AB) - baseline_h/baseline_ab),1))
-
-pitcher_projections <- pitcher_projections %>% 
-  mutate(point_value = round(W * w_factor + SV * sv_factor + SO * so_factor + era_factor * (9*(baseline_er + ER)/(baseline_ip + IP) - 9*baseline_er/baseline_ip) + whip_factor * ((baseline_wh + BB + H)/(baseline_ip + IP) - baseline_wh/baseline_ip),1))
-
-# --- Create Projected Players ---
-message("Creating projected players dataframe...")
-
-projected_players <- bind_rows(hitter_projections, pitcher_projections) %>% 
-  filter(Team %in% c('ATL','LAD','SDP','ARI','NYM','PHI','MIL','STL','CHC','SFG','CIN','COL','PIT','MIA','WSN','NA')) %>%
-  stringdist_left_join(prefreeze_rosters, by = c("Name" = "player"), max_dist = 2) %>% 
-  stringdist_left_join(positions, by = c("Name" = "player"), max_dist = 2) %>% 
-  stringdist_left_join(salaries, by = c("Name" = "Player"), max_dist = 2) %>% 
-  mutate(salary = case_when(!is.na(billikenTeam) ~ salary, TRUE ~ new_salary)) %>% 
-  mutate(AVG = round(AVG,3), ERA = round(ERA,2), WHIP = round(WHIP,2), SO = case_when(IP == 0 ~ NA, IP > 0 ~ SO)) %>%  
-  mutate(HR = case_when(PA == 0 ~ NA, PA > 0 ~ HR), R = case_when(PA == 0 ~ NA, PA > 0 ~ R), AVG = case_when(PA == 0 ~ NA, PA > 0 ~ AVG)) %>% 
-  # Calculate WH (walks + hits) for WHIP and ER for ERA in standings
-  mutate(WH = ifelse(IP > 0, WHIP * IP, NA_real_)) %>%
-  mutate(ER = ifelse(IP > 0, ERA * IP / 9, NA_real_)) %>%
-  select(Name, billikenTeam, contract, salary, Team, PA, AB, H, HR, R, RBI, SB, AVG, IP, W, SV, SO, ER, WH, ERA, WHIP, point_value, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi) %>%
-  arrange(desc(point_value))
-
-# --- Calculate Replacement Levels by Position ---
-message("Calculating replacement levels by position...")
-
-# Calculate replacement level point values for each position
-rl_c <- projected_players %>% 
-  filter(p_c == 1) %>% 
-  arrange(desc(point_value)) %>%
-  slice(21) %>% 
-  pull(point_value)
-
-rl_1b <- projected_players %>% 
-  filter(p_1b == 1) %>% 
-  arrange(desc(point_value)) %>%
-  slice(16) %>% 
-  pull(point_value)
-
-rl_2b <- projected_players %>% 
-  filter(p_2b == 1) %>% 
-  arrange(desc(point_value)) %>%
-  slice(16) %>% 
-  pull(point_value)
-
-rl_3b <- projected_players %>% 
-  filter(p_3b == 1) %>% 
-  arrange(desc(point_value)) %>%
-  slice(16) %>% 
-  pull(point_value)
-
-rl_ss <- projected_players %>% 
-  filter(p_ss == 1) %>% 
-  arrange(desc(point_value)) %>%
-  slice(16) %>% 
-  pull(point_value)
-
-rl_of <- projected_players %>% 
-  filter(p_of == 1) %>% 
-  arrange(desc(point_value)) %>%
-  slice(51) %>% 
-  pull(point_value)
-
-rl_ci <- projected_players %>% 
-  filter(p_ci == 1) %>% 
-  arrange(desc(point_value)) %>%
-  slice(31) %>% 
-  pull(point_value)
-
-rl_mi <- projected_players %>% 
-  filter(p_mi == 1) %>% 
-  arrange(desc(point_value)) %>%
-  slice(31) %>% 
-  pull(point_value)
-
-rl_util <- projected_players %>% 
-  arrange(desc(point_value)) %>%
-  slice(141) %>% 
-  pull(point_value)
-
-rl_p <- projected_players %>% 
-  filter(IP > 0) %>% 
-  arrange(desc(point_value)) %>%
-  slice(91) %>% 
-  pull(point_value)
-
-message(sprintf("Replacement levels: C=%.1f, 1B=%.1f, 2B=%.1f, 3B=%.1f, SS=%.1f, OF=%.1f, CI=%.1f, MI=%.1f, Util=%.1f, P=%.1f",
-                rl_c, rl_1b, rl_2b, rl_3b, rl_ss, rl_of, rl_ci, rl_mi, rl_util, rl_p))
-
-# --- Calculate Points Above Replacement (PAR) ---
-message("Calculating points above replacement...")
-
-# For each player, find their best (lowest) eligible replacement level
-par <- projected_players %>% 
-  mutate(
-    repl = case_when(
-      # Pitchers
-      IP > 0 ~ rl_p,
-      # Position players - use the lowest (best) replacement level they qualify for
-      TRUE ~ pmin(
-        ifelse(p_c == 1, rl_c, 999),
-        ifelse(p_1b == 1, rl_1b, 999),
-        ifelse(p_2b == 1, rl_2b, 999),
-        ifelse(p_3b == 1, rl_3b, 999),
-        ifelse(p_ss == 1, rl_ss, 999),
-        ifelse(p_of == 1, rl_of, 999),
-        ifelse(p_ci == 1, rl_ci, 999),
-        ifelse(p_mi == 1, rl_mi, 999),
-        rl_util,  # Everyone qualifies for utility
-        na.rm = TRUE
-      )
-    )
-  ) %>% 
-  mutate(par = point_value - repl) %>% 
-  arrange(desc(par)) %>% 
-  select(Name, Team, billikenTeam, contract, salary, point_value, repl, par, PA, AB, H, HR, R, RBI, SB, AVG, IP, W, SV, SO, ER, WH, ERA, WHIP, p_c, p_1b, p_2b, p_3b, p_ss, p_of, p_ci, p_mi)
-
-# --- Calculate Expected Value (EV) ---
-message("Calculating expected value...")
-
-# Build linear model: salary ~ par (for players with current salaries)
-# This estimates market value based on points above replacement
-ev_data <- par %>% filter(!is.na(salary) & !is.na(billikenTeam))
-ev_model <- lm(salary ~ par, data = ev_data)
-
-# Extract coefficients (y = mx + b form)
-ev_slope <- ev_model$coefficients["par"]        # m (multiplier for PAR)
-ev_intercept <- ev_model$coefficients["(Intercept)"]  # b (base salary)
-
-message(sprintf("EV Model: salary = %.3f * par + %.3f (R² = %.3f)",
-                ev_slope, ev_intercept, summary(ev_model)$r.squared))
-
-# Calculate expected value for all players using model coefficients
-par$ev <- par$par * ev_slope + ev_intercept
-par$surplus <- round(par$ev - par$salary, 1)
-par$ev <- round(par$ev, 1)
-
-# Export full projections
-dir.create("data/processed", showWarnings = FALSE, recursive = TRUE)
-write_csv(par, "data/processed/projections_2026.csv")
-message("Exported full projections to data/processed/projections_2026.csv")
-
-# --- Project Keepers for Each Team ---
-message("Projecting keepers for each team...")
-
-# Define keeper limits for each team
-keeper_limits <- list(
-  "Blue Socks" = 15,
-  "Melonheads" = 15,
-  "Erie Lakers" = 10,
-  "National Pastime" = 15,
-  "Big Red Machine" = 15,
-  "Free At Last" = 15,
-  "Free Birds" = 15,
-  "Westside Marauders" = 15,
-  "Louisville Sluggers" = 11,
-  "Hoosiers" = 12
-)
-
-# Project keepers for all teams
-projected_keepers_list <- list()
-
-for (team_name in names(keeper_limits)) {
-  limit <- keeper_limits[[team_name]]
-  
-  team_keepers <- par %>% 
-    filter(billikenTeam == team_name) %>% 
-    arrange(desc(ev)) %>% 
-    slice_head(n = limit)
-  
-  projected_keepers_list[[team_name]] <- team_keepers
-  
-  # Print keeper summary
-  message(sprintf("\n%s (%d keepers):", team_name, nrow(team_keepers)))
-  for (i in 1:nrow(team_keepers)) {
-    player <- team_keepers[i,]
-    message(sprintf("  %d. %s - EV: $%s, Salary: $%s, PAR: %.1f", 
-                    i, player$Name, player$ev, player$salary, player$par))
+  resolve_path <- function(p) {
+    if (is.null(p)) return(NULL)
+    if (grepl("^/", p)) return(p)
+    file.path(root, p)
   }
+
+  out_dir <- resolve_path(output_dir)
+  dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+
+  message(sprintf("Running simulate_keepers() with sgpar_random = %.3f", sgpar_random))
+
+  # -----------------
+  # Helpers
+  # -----------------
+  normalize_name <- function(x) {
+    x %>%
+      stri_trans_general("Latin-ASCII") %>%
+      str_replace_all("\\u00A0", " ") %>%
+      str_replace_all("[.]", "") %>%
+      str_squish() %>%
+      str_to_lower()
+  }
+
+  strip_suffixes <- function(x) {
+    # Remove common suffixes that frequently appear inconsistently in sources
+    # e.g. "Luis Robert Jr." vs "Luis Robert"
+    x %>%
+      str_replace_all(",|\\s+(jr|sr|ii|iii|iv|v)\\.?$", "")
+  }
+
+  resolve_roster_matches <- function(joined) {
+    # joined includes a synthetic row_id, plus roster columns that may create duplicates.
+    # We pick the best roster match per row_id, preferring pitcher/hitter alignment when possible.
+    joined %>%
+      mutate(
+        proj_is_pitcher = player_type %in% c("pitcher"),
+        roster_is_pitcher = slot == "P",
+        match_score = case_when(
+          is.na(billikenTeam) ~ -10,
+          proj_is_pitcher & roster_is_pitcher ~ 2,
+          (!proj_is_pitcher) & (!roster_is_pitcher) ~ 1,
+          TRUE ~ 0
+        )
+      ) %>%
+      group_by(row_id) %>%
+      arrange(desc(match_score), desc(!is.na(billikenTeam))) %>%
+      slice(1) %>%
+      ungroup() %>%
+      select(-proj_is_pitcher, -roster_is_pitcher, -match_score)
+  }
+
+  # -----------------
+  # Load inputs
+  # -----------------
+  message("Loading inputs...")
+
+  proj <- readr::read_csv(resolve_path(projected_player_value_path), show_col_types = FALSE)
+
+  rosters_raw <- readr::read_csv(resolve_path(prefreeze_rosters_path), show_col_types = FALSE)
+
+  prefreeze_rosters <- rosters_raw %>%
+    filter(
+      !is.na(player),
+      !is.na(billikenTeam),
+      player != "PLAYER",
+      slot != "SLOT"
+    ) %>%
+    transmute(
+      billikenTeam,
+      slot,
+      player,
+      contract,
+      salary = as.numeric(salary)
+    )
+
+  scenario_player_trades <- tibble::tibble()
+
+  # Optional: apply trade overlay (moves players between teams before keeper selection)
+  if (!is.null(trades_path)) {
+    if (!exists("read_trade_scenario_csv") || !exists("apply_trades_to_prefreeze_rosters")) {
+      stop("Trade helpers not found; expected scripts/trade_utils.R.", call. = FALSE)
+    }
+
+    scenario <- read_trade_scenario_csv(resolve_path(trades_path))
+    scenario_player_trades <- scenario$player_trades
+
+    bad_force <- scenario_player_trades %>%
+      filter(!is.na(force_keeper) & force_keeper == 1L & is.na(to_team))
+    if (nrow(bad_force) > 0) {
+      stop(
+        "ForceKeeper=1 rows must specify a real to_team (or keep to_team==from_team); to_team cannot be NA/NULL.",
+        call. = FALSE
+      )
+    }
+
+    message(sprintf("Applying %d player-move row(s) from %s", nrow(scenario_player_trades), trades_path))
+    prefreeze_rosters <- apply_trades_to_prefreeze_rosters(prefreeze_rosters, scenario_player_trades)
+  }
+
+  # -----------------
+  # Join projections to prefreeze rosters (careful name handling)
+  # -----------------
+  message("Joining projections to prefreeze rosters...")
+
+  proj_keyed <- proj %>%
+    mutate(
+      row_id = row_number(),
+      key_keep = normalize_name(Name),
+      key_strip = normalize_name(strip_suffixes(Name))
+    )
+
+  rosters_keyed <- prefreeze_rosters %>%
+    mutate(
+      key_keep = normalize_name(player),
+      key_strip = normalize_name(strip_suffixes(player))
+    )
+
+  # Pass 1: exact-ish name match (keep suffixes)
+  pass1 <- proj_keyed %>%
+    left_join(
+      rosters_keyed %>% select(key_keep, billikenTeam, slot, contract, salary),
+      by = join_by(key_keep),
+      relationship = "many-to-many"
+    ) %>%
+    resolve_roster_matches()
+
+  # Pass 2: for any unmatched players, try stripping suffixes (Jr/Sr/etc)
+  unmatched <- pass1 %>% filter(is.na(billikenTeam))
+  matched <- pass1 %>% filter(!is.na(billikenTeam))
+
+  pass2 <- unmatched %>%
+    select(-billikenTeam, -slot, -contract, -salary) %>%
+    left_join(
+      rosters_keyed %>% select(key_strip, billikenTeam, slot, contract, salary),
+      by = join_by(key_strip),
+      relationship = "many-to-many"
+    ) %>%
+    resolve_roster_matches()
+
+  projections_prefreeze <- bind_rows(matched, pass2) %>%
+    arrange(row_id) %>%
+    select(-row_id, -key_keep, -key_strip)
+
+  # -----------------
+  # Export projections_prefreeze.csv
+  # -----------------
+  message("Writing projections_prefreeze.csv...")
+  readr::write_csv(projections_prefreeze, file.path(out_dir, "projections_prefreeze.csv"))
+
+  # -----------------
+  # Simulate keepers (by sgpar, optionally with randomness)
+  # -----------------
+  message("Simulating keepers...")
+
+  keeper_limits <- list(
+    "Blue Socks" = 15,
+    "Melonheads" = 15,
+    "Erie Lakers" = 10,
+    "National Pastime" = 15,
+    "Big Red Machine" = 15,
+    "Free At Last" = 15,
+    "Free Birds" = 15,
+    "Westside Marauders" = 15,
+    "Louisville Sluggers" = 11,
+    "Hoosiers" = 12
+  )
+
+  if (!is.null(seed)) {
+    set.seed(seed)
+  } else {
+    set.seed(NULL)
+  }
+
+  projections_prefreeze <- projections_prefreeze %>%
+    mutate(
+      sgpar_random_delta = ifelse(
+        sgpar_random > 0,
+        sgpar * runif(n(), min = -sgpar_random, max = sgpar_random),
+        0
+      ),
+      sgpar_randomized = sgpar + sgpar_random_delta
+    )
+
+  # -----------------
+  # Optional: keeper overrides + cap penalties from scenario file
+  # -----------------
+  keeper_overrides_resolved <- tibble::tibble(
+    Name = character(),
+    billikenTeam = character(),
+    force_keeper = integer(),
+    drop_penalty = numeric(),
+    player = character(),
+    from_team = character(),
+    to_team = character()
+  )
+  drop_penalties_by_team <- tibble::tibble(billikenTeam = character(), cap_penalty = numeric())
+
+  if (nrow(scenario_player_trades) > 0) {
+    team_map <- stats::setNames(names(keeper_limits), .standardize_team(names(keeper_limits)))
+
+    canon_team <- function(x) {
+      key <- .standardize_team(x)
+      if (is.na(key) || !key %in% names(team_map)) {
+        stop(sprintf("Unknown team in scenario file: '%s'", as.character(x)), call. = FALSE)
+      }
+      unname(team_map[[key]])
+    }
+
+    drop_penalties_by_team <- scenario_player_trades %>%
+      mutate(
+        is_drop = is.na(to_team) | (!is.na(force_keeper) & force_keeper == 0L),
+        dropper_team_raw = ifelse(
+          !is.na(force_keeper) & force_keeper == 0L & !is.na(to_team),
+          to_team,
+          from_team
+        ),
+        cap_penalty = replace_na(drop_penalty, 0)
+      ) %>%
+      filter(is_drop) %>%
+      mutate(
+        billikenTeam = vapply(dropper_team_raw, canon_team, character(1))
+      ) %>%
+      group_by(billikenTeam) %>%
+      summarise(cap_penalty = sum(cap_penalty, na.rm = TRUE), .groups = "drop") %>%
+      arrange(billikenTeam)
+
+    readr::write_csv(drop_penalties_by_team, file.path(out_dir, "salary_cap_penalties.csv"))
+
+    overrides <- scenario_player_trades %>%
+      filter(!is.na(force_keeper)) %>%
+      # If you explicitly drop a player via to_team=NA/NULL, they won't be on any roster;
+      # ForceKeeper=0 is redundant in that case.
+      filter(!(force_keeper == 0L & is.na(to_team)))
+
+    if (nrow(overrides) > 0) {
+      proj_keys <- projections_prefreeze %>%
+        transmute(
+          Name,
+          roster_team = billikenTeam,
+          key_keep = normalize_name(Name),
+          key_strip = normalize_name(strip_suffixes(Name))
+        )
+
+      resolve_name <- function(p) {
+        p_keep <- normalize_name(p)
+        p_strip <- normalize_name(strip_suffixes(p))
+
+        c_keep <- proj_keys %>% filter(key_keep == p_keep) %>% pull(Name) %>% unique()
+        if (length(c_keep) == 1) return(c_keep)
+
+        c_strip <- proj_keys %>% filter(key_strip == p_strip) %>% pull(Name) %>% unique()
+        if (length(c_strip) == 1) return(c_strip)
+
+        c_all <- unique(c(c_keep, c_strip))
+        if (length(c_all) > 1) {
+          stop(sprintf(
+            "Keeper override player '%s' matches multiple projection names: %s",
+            p,
+            paste(c_all, collapse = ", ")
+          ), call. = FALSE)
+        }
+
+        stop(sprintf(
+          "Keeper override player '%s' not found in projections; check spelling or name normalization.",
+          p
+        ), call. = FALSE)
+      }
+
+      keeper_overrides_resolved <- overrides %>%
+        mutate(
+          Name = vapply(player, resolve_name, character(1)),
+          team_raw = ifelse(!is.na(to_team), to_team, from_team),
+          billikenTeam = vapply(team_raw, canon_team, character(1)),
+          force_keeper = as.integer(force_keeper)
+        ) %>%
+        select(Name, billikenTeam, force_keeper, drop_penalty, player, from_team, to_team)
+
+      # Validate that the player is on the specified team after applying player moves.
+      roster_team_map <- projections_prefreeze %>%
+        select(Name, roster_team = billikenTeam) %>%
+        distinct()
+
+      bad_team <- keeper_overrides_resolved %>%
+        left_join(roster_team_map, by = "Name") %>%
+        filter(is.na(roster_team) | roster_team != billikenTeam)
+
+      if (nrow(bad_team) > 0) {
+        msg <- paste0(
+          "ForceKeeper row(s) refer to a player/team combo that doesn't match the post-trade rosters.\n",
+          "Example: ", bad_team$player[[1]], " is on '", bad_team$roster_team[[1]], "' (not '", bad_team$billikenTeam[[1]], "')."
+        )
+        stop(msg, call. = FALSE)
+      }
+
+      conflicts <- keeper_overrides_resolved %>%
+        group_by(Name, billikenTeam) %>%
+        summarise(n_vals = n_distinct(force_keeper), .groups = "drop") %>%
+        filter(n_vals > 1)
+
+      if (nrow(conflicts) > 0) {
+        stop("Conflicting ForceKeeper overrides found for at least one player/team.", call. = FALSE)
+      }
+
+      readr::write_csv(keeper_overrides_resolved, file.path(out_dir, "keeper_overrides_resolved.csv"))
+    }
+  } else {
+    # Write an empty file for convenience/consistency.
+    readr::write_csv(drop_penalties_by_team, file.path(out_dir, "salary_cap_penalties.csv"))
+  }
+
+  simulated_keepers_list <- list()
+
+  for (team_name in names(keeper_limits)) {
+    limit <- keeper_limits[[team_name]]
+
+    force_keep_names <- keeper_overrides_resolved %>%
+      filter(billikenTeam == team_name, force_keeper == 1L) %>%
+      pull(Name) %>%
+      unique()
+
+    force_drop_names <- keeper_overrides_resolved %>%
+      filter(billikenTeam == team_name, force_keeper == 0L) %>%
+      pull(Name) %>%
+      unique()
+
+    both <- intersect(force_keep_names, force_drop_names)
+    if (length(both) > 0) {
+      stop(sprintf(
+        "%s: ForceKeeper has conflicting keep/drop entries for: %s",
+        team_name,
+        paste(both, collapse = ", ")
+      ), call. = FALSE)
+    }
+
+    team_pool <- projections_prefreeze %>%
+      filter(billikenTeam == team_name)
+
+    forced_keeps <- team_pool %>%
+      filter(Name %in% force_keep_names)
+
+    if (length(force_keep_names) > 0 && nrow(forced_keeps) != length(force_keep_names)) {
+      missing <- setdiff(force_keep_names, forced_keeps$Name)
+      stop(sprintf(
+        "%s: ForceKeeper=1 specified for player(s) not found on that team's roster: %s",
+        team_name,
+        paste(missing, collapse = ", ")
+      ), call. = FALSE)
+    }
+
+    if (nrow(forced_keeps) > limit) {
+      stop(sprintf(
+        "%s: %d forced keepers exceeds keeper limit (%d).",
+        team_name,
+        nrow(forced_keeps),
+        limit
+      ), call. = FALSE)
+    }
+
+    remaining_n <- limit - nrow(forced_keeps)
+
+    ranked_keeps <- team_pool %>%
+      filter(!Name %in% c(force_keep_names, force_drop_names)) %>%
+      filter(!is.na(sgpar) & sgpar >= 0.0) %>%
+      arrange(desc(sgpar_randomized), desc(sgpar)) %>%
+      slice_head(n = remaining_n)
+
+    team_keepers <- bind_rows(forced_keeps, ranked_keeps)
+
+    simulated_keepers_list[[team_name]] <- team_keepers
+
+    message(sprintf(
+      "%s: keeping %d (limit %d; forced %d)",
+      team_name,
+      nrow(team_keepers),
+      limit,
+      nrow(forced_keeps)
+    ))
+  }
+
+  simulated_keepers <- bind_rows(simulated_keepers_list)
+
+  message("Writing simulated_keepers.csv...")
+  readr::write_csv(simulated_keepers, file.path(out_dir, "simulated_keepers.csv"))
+
+  message("Done!")
+
+  invisible(list(
+    projections_prefreeze = projections_prefreeze,
+    simulated_keepers = simulated_keepers,
+    drop_penalties_by_team = drop_penalties_by_team,
+    keeper_overrides_resolved = keeper_overrides_resolved
+  ))
 }
-
-# Combine all projected keepers
-projected_keepers_full <- bind_rows(projected_keepers_list)
-
-# Export full keeper details
-write_csv(projected_keepers_full, "data/processed/projected_keepers.csv")
-message(sprintf("Exported %d projected keepers to data/processed/projected_keepers.csv", nrow(projected_keepers_full)))
-
-# Create simplified version for joins
-projected_keepers <- projected_keepers_full %>% 
-  select(Name, billikenTeam) %>% 
-  rename(keepingTeam = billikenTeam)
-
-message(sprintf("Total projected keepers: %d", nrow(projected_keepers)))
-
-# --- Export Draft Eligible Players ---
-message("Exporting draft eligible players...")
-
-projected_draft_eligible <- par %>% 
-  left_join(projected_keepers, by = join_by(Name)) %>% 
-  filter(is.na(keepingTeam)) %>% 
-  relocate(ev, .after = par) %>% 
-  relocate(surplus, .after = ev) %>% 
-  arrange(desc(ev)) %>% 
-  mutate(pick = row_number())
-
-# Write to CSV
-write_csv(projected_draft_eligible, "data/processed/projected_draft_eligible.csv")
-
-message(sprintf("Exported %d draft eligible players to data/processed/projected_draft_eligible.csv", nrow(projected_draft_eligible)))
-
-# Print summary
-message("\n=== Draft Eligible Summary ===")
-message(sprintf("Total players available: %d", nrow(projected_draft_eligible)))
-message(sprintf("Top 10 by EV:"))
-for (i in 1:min(10, nrow(projected_draft_eligible))) {
-  player <- projected_draft_eligible[i,]
-  message(sprintf("  %d. %s (%s) - EV: $%s, PAR: %.1f", 
-                  i, player$Name, player$Team, player$ev, player$par))
-}
-
-message("\nDone!")

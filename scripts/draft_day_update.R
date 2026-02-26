@@ -23,9 +23,15 @@ tab_salaries          <- Sys.getenv("BILLIKEN_TAB_SALARIES",          unset = "S
 message("Reading Billiken Google Sheet (de-authed/public)…")
 gs4_deauth()
 
-prefreeze_rosters <- read_sheet(sheet_id, sheet = tab_prefreeze_rosters, col_types = "ccccccd")
-frozen_rosters    <- read_sheet(sheet_id, sheet = tab_frozen_rosters, col_types = "ccccdc")
-draft             <- read_sheet(sheet_id, sheet = tab_draft)
+prefreeze_rosters <- read_sheet(sheet_id, sheet = tab_prefreeze_rosters, col_types = "ccccccd") %>%
+  # Remove outdated/incorrect columns if present
+  select(-any_of(c("team", "2021eligibility")))
+frozen_rosters    <- read_sheet(sheet_id, sheet = tab_frozen_rosters, col_types = "ccccdc") %>% 
+  rename(billikenTeam = "Owner")
+draft             <- read_sheet(sheet_id, sheet = tab_draft) %>%
+  # Remove redundant columns if present
+  select(-(1:2)) %>% 
+  rename(Player = "Player...7")
 salaries          <- read_sheet(sheet_id, sheet = tab_salaries, col_types = "cdc")
 
 # Write raw extracts (timestamped)
@@ -41,7 +47,7 @@ write_csv(frozen_rosters,    file.path("data/raw", "keepers.csv"))
 write_csv(draft,             file.path("data/raw", "draft_latest.csv"))
 write_csv(salaries,          file.path("data/raw", "salaries_latest.csv"))
 
-message("Wrote raw + latest CSVs under data/raw/. Downloading FanGraphs projections...")
+message("Wrote raw + latest CSVs under data/raw/. Downloading FanGraphs projections + auction $ values...")
 
 source("scripts/download_fangraphs_projections.R")
 
