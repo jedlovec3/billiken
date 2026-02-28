@@ -3,7 +3,7 @@
 library(shiny)
 
 shiny::runApp(
-  appDir = "DraftAssistant",
+  appDir = "TradeScenarios",
   host = "0.0.0.0",
   port = 5000,
   launch.browser = FALSE

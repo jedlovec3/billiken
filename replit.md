@@ -1,13 +1,17 @@
 # Billiken League Fantasy Baseball Analysis
 
 ## Overview
-R Shiny web application for the Billiken League fantasy baseball draft assistant. Provides player rankings, projected standings, and draft analysis tools.
+R Shiny web applications for the Billiken League fantasy baseball analysis. Includes a draft assistant and a standalone trade scenarios dashboard.
 
 ## Architecture
-- **Frontend/Backend**: Single R Shiny app (`DraftAssistant/`)
+- **Trade Scenarios Dashboard** (`TradeScenarios/app.R`) — currently active workflow
+  - Dropdown to select a trade scenario; displays simulated delta impact on projected standings
+  - Reads `data/scenarios/<name>/latest.txt` → `<timestamp>/delta_summary.csv`
+  - Excludes `_baseline` folder; handles absolute Mac paths in `latest.txt` via `basename()`
+- **Draft Assistant** (`DraftAssistant/`) — kept but not the active workflow
   - `DraftAssistant/server.R` - Server logic, data loading, analytics
   - `DraftAssistant/ui.R` - User interface definition
-- **Run script**: `run_app.R` - Launches Shiny on port 5000
+- **Run script**: `run_app.R` - Launches the active Shiny app on port 5000
 
 ## Key Dependencies
 - **R 4.5** runtime
@@ -34,7 +38,9 @@ renv is disabled at startup via `RENV_CONFIG_AUTOLOADER_ENABLED=FALSE` in the wo
 ## Data Files
 - `DraftAssistant/hitter_projections_YYYY.csv` - FanGraphs hitter projections
 - `DraftAssistant/pitcher_projections_YYYY.csv` - FanGraphs pitcher projections
-- `data/` - Processed analysis data
+- `data/scenarios/<name>/latest.txt` - Points to latest simulation run folder (absolute path; use basename())
+- `data/scenarios/<name>/<timestamp>/delta_summary.csv` - Simulation results; columns: team, baseline_*, scenario_*, delta_*
+- `scenarios/<name>.csv` - Trade definition CSV files
 - `scripts/` - Data update and analysis scripts
 
 ## Workflow
