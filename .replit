@@ -4,3 +4,52 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
+packages = ["curl", "openssl", "icu", "zlib", "gnumake", "pandoc", "icu74"]
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 62654
+externalPort = 3003
+
+[[ports]]
+localPort = 63967
+externalPort = 3001
+
+[[ports]]
+localPort = 64821
+externalPort = 3000
+
+[[ports]]
+localPort = 65535
+externalPort = 80
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "RENV_CONFIG_AUTOLOADER_ENABLED=FALSE Rscript run_app.R"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["bash", "-c", "RENV_CONFIG_AUTOLOADER_ENABLED=FALSE Rscript run_app.R"]
