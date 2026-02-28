@@ -27,16 +27,24 @@ if (is.null(auction_values) || !is.data.frame(auction_values)) {
 
 auc_bat <- auction_values %>%
   filter(auction_type == "bat") %>%
-  select(playerid, fg_auction_dollars) %>%
-  group_by(playerid) %>%
-  summarise(fg_auction_dollars = max(fg_auction_dollars, na.rm = TRUE), .groups = "drop") %>%
+  select(xMLBAMID, PlayerName, fg_auction_dollars) %>%
+  group_by(xMLBAMID) %>%
+  summarise(
+    PlayerName = first(PlayerName),
+    fg_auction_dollars = max(fg_auction_dollars, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
   mutate(fg_auction_dollars = if_else(is.infinite(fg_auction_dollars), NA_real_, fg_auction_dollars))
 
 auc_pit <- auction_values %>%
   filter(auction_type == "pit") %>%
-  select(playerid, fg_auction_dollars) %>%
-  group_by(playerid) %>%
-  summarise(fg_auction_dollars = max(fg_auction_dollars, na.rm = TRUE), .groups = "drop") %>%
+  select(xMLBAMID, PlayerName, fg_auction_dollars) %>%
+  group_by(xMLBAMID) %>%
+  summarise(
+    PlayerName = first(PlayerName),
+    fg_auction_dollars = max(fg_auction_dollars, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
   mutate(fg_auction_dollars = if_else(is.infinite(fg_auction_dollars), NA_real_, fg_auction_dollars))
 
 # Fangraphs Depth Charts endpoints
@@ -101,18 +109,30 @@ fetch_projection <- function(url, path, type) {
     }
   }
 
-  # Join auction $ values
-  if ("playerid" %in% names(df)) {
-    df <- df %>% mutate(playerid = as.integer(playerid))
+  # Join auction $ values: by xMLBAMID first, then fall back to player name
+  auc <- if (identical(type, "hitters")) auc_bat else auc_pit
 
-    if (identical(type, "hitters")) {
-      df <- df %>% left_join(auc_bat, by = "playerid")
-    } else if (identical(type, "pitchers")) {
-      df <- df %>% left_join(auc_pit, by = "playerid")
-    }
+  if ("xMLBAMID" %in% names(df)) {
+    df <- df %>% mutate(xMLBAMID = as.integer(xMLBAMID))
+    df <- df %>%
+      left_join(
+        auc %>% filter(!is.na(xMLBAMID)) %>% select(xMLBAMID, fg_auction_dollars),
+        by = "xMLBAMID"
+      )
   } else {
-    warning(sprintf("No playerid column found for %s; cannot join auction dollars", type))
     df$fg_auction_dollars <- NA_real_
+  }
+
+  # Fallback: fill unmatched rows by player name
+  if ("Name" %in% names(df) && any(is.na(df$fg_auction_dollars))) {
+    name_lookup <- auc %>%
+      distinct(PlayerName, .keep_all = TRUE) %>%
+      select(PlayerName, fg_auction_dollars_name = fg_auction_dollars)
+
+    df <- df %>%
+      left_join(name_lookup, by = c("Name" = "PlayerName")) %>%
+      mutate(fg_auction_dollars = coalesce(fg_auction_dollars, fg_auction_dollars_name)) %>%
+      select(-fg_auction_dollars_name)
   }
 
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)

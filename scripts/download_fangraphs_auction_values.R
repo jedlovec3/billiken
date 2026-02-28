@@ -73,9 +73,21 @@ projections_year <- Sys.getenv("BILLIKEN_PROJECTIONS_YEAR", unset = "2026")
 
   obj <- fromJSON(resp_body_string(resp), flatten = TRUE)
 
-  out <- obj$data %>%
+  raw <- obj$data
+
+  # Look for MLBAM ID field (more complete than playerid)
+  mlbam_col <- intersect(c("xMLBAMID", "xMLBAMId", "MLBAMId", "MLBAMID"), names(raw))
+  if (length(mlbam_col) > 0) {
+    raw$xMLBAMID <- as.integer(raw[[mlbam_col[1]]])
+  } else {
+    warning(sprintf("No MLBAM ID column found in auction calculator response (type=%s)", type))
+    raw$xMLBAMID <- NA_integer_
+  }
+
+  out <- raw %>%
     transmute(
       playerid = as.integer(playerid),
+      xMLBAMID = xMLBAMID,
       Team = as.character(Team),
       PlayerName = as.character(PlayerName),
       auction_type = type,
