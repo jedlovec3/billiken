@@ -13,6 +13,9 @@ Web applications for the Billiken League fantasy baseball analysis. The active a
 - **API endpoints**:
   - `GET /` — serves the dashboard HTML
   - `GET /api/scenario/<name>` — returns delta_summary rows as JSON, sorted by Δ Pts desc
+  - `GET /api/scenarios/<name>/definition` — returns trade rows from `scenarios/<name>.csv` as JSON (team names normalized to uppercase)
+  - `POST /api/scenarios` — creates a new `scenarios/<name>.csv`; body: `{ name, rows }` where rows are player or pick objects
+  - `PUT /api/scenarios/<name>` — overwrites an existing `scenarios/<name>.csv` with updated rows
 - **No external dependencies** beyond Flask (stdlib csv, os modules for data reading)
 
 ### Inactive: Draft Assistant (R Shiny)

@@ -18,10 +18,38 @@ def get_scenarios():
             latest = os.path.join(SCENARIOS_DIR, name, "latest.txt")
             if os.path.isdir(os.path.join(SCENARIOS_DIR, name)) and os.path.exists(latest):
                 display = name.replace("_", " ").title()
-                scenarios.append({"value": name, "label": display})
+                has_def = os.path.exists(os.path.join(TRADE_DEFS_DIR, f"{name}.csv"))
+                scenarios.append({"value": name, "label": display, "has_definition": has_def})
     except FileNotFoundError:
         pass
     return scenarios
+
+
+def write_scenario_csv(path, rows):
+    with open(path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["player", "from_team", "to_team", "round", "pick", "ForceKeeper", "DropPenalty"])
+        for row in rows:
+            row_type = row.get("type")
+            if row_type == "player":
+                player       = row.get("player", "").strip()
+                from_team    = row.get("from_team", "").strip()
+                to_team      = row.get("to_team", "").strip()
+                force_keeper = row.get("force_keeper", "")
+                drop_penalty = row.get("drop_penalty", "")
+                if not player or not from_team:
+                    raise ValueError("Player rows require player name and from_team")
+                writer.writerow([player, from_team, to_team, "", "", force_keeper, drop_penalty])
+            elif row_type == "pick":
+                from_team = row.get("from_team", "").strip()
+                to_team   = row.get("to_team", "").strip()
+                rnd       = row.get("round", "")
+                pick      = row.get("pick", "")
+                if not from_team or not to_team or not rnd or not pick:
+                    raise ValueError("Pick rows require from_team, to_team, round, and pick")
+                writer.writerow(["", from_team, to_team, rnd, pick, "", ""])
+            else:
+                raise ValueError(f"Unknown row type: {row_type}")
 
 
 def load_delta(scenario_name):
@@ -109,32 +137,74 @@ def save_scenario():
     if os.path.exists(dest):
         return jsonify({"error": f"Scenario '{name}' already exists"}), 409
 
-    with open(dest, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["player", "from_team", "to_team", "round", "pick", "ForceKeeper", "DropPenalty"])
-        for row in rows:
-            row_type = row.get("type")
-            if row_type == "player":
-                player      = row.get("player", "").strip()
-                from_team   = row.get("from_team", "").strip()
-                to_team     = row.get("to_team", "").strip()
-                force_keeper = row.get("force_keeper", "")
-                drop_penalty = row.get("drop_penalty", "")
-                if not player or not from_team:
-                    return jsonify({"error": "Player rows require player name and from_team"}), 400
-                writer.writerow([player, from_team, to_team, "", "", force_keeper, drop_penalty])
-            elif row_type == "pick":
-                from_team = row.get("from_team", "").strip()
-                to_team   = row.get("to_team", "").strip()
-                rnd       = row.get("round", "")
-                pick      = row.get("pick", "")
-                if not from_team or not to_team or not rnd or not pick:
-                    return jsonify({"error": "Pick rows require from_team, to_team, round, and pick"}), 400
-                writer.writerow(["", from_team, to_team, rnd, pick, "", ""])
-            else:
-                return jsonify({"error": f"Unknown row type: {row_type}"}), 400
+    try:
+        write_scenario_csv(dest, rows)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
     return jsonify({"name": name}), 201
+
+
+@app.route("/api/scenarios/<name>/definition")
+def get_scenario_definition(name):
+    safe = os.path.basename(name)
+    if safe != name:
+        return jsonify({"error": "Invalid name"}), 400
+
+    path = os.path.join(TRADE_DEFS_DIR, f"{safe}.csv")
+    if not os.path.exists(path):
+        return jsonify({"error": "No definition file found for this scenario"}), 404
+
+    rows = []
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            player = row.get("player", "").strip()
+            if not player:
+                rows.append({
+                    "type":      "pick",
+                    "from_team": row.get("from_team", "").strip().upper(),
+                    "to_team":   row.get("to_team", "").strip().upper(),
+                    "round":     row.get("round", "").strip(),
+                    "pick":      row.get("pick", "").strip(),
+                })
+            else:
+                rows.append({
+                    "type":         "player",
+                    "player":       player,
+                    "from_team":    row.get("from_team", "").strip().upper(),
+                    "to_team":      row.get("to_team", "").strip().upper(),
+                    "force_keeper": row.get("ForceKeeper", "").strip(),
+                    "drop_penalty": row.get("DropPenalty", "").strip(),
+                })
+
+    return jsonify({"name": safe, "rows": rows})
+
+
+@app.route("/api/scenarios/<name>", methods=["PUT"])
+def update_scenario(name):
+    safe = os.path.basename(name)
+    if safe != name:
+        return jsonify({"error": "Invalid name"}), 400
+
+    path = os.path.join(TRADE_DEFS_DIR, f"{safe}.csv")
+    if not os.path.exists(path):
+        return jsonify({"error": "Scenario not found"}), 404
+
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    rows = data.get("rows", [])
+    if not rows:
+        return jsonify({"error": "At least one trade row is required"}), 400
+
+    try:
+        write_scenario_csv(path, rows)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    return jsonify({"name": safe})
 
 
 if __name__ == "__main__":

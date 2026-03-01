@@ -76,6 +76,28 @@
 
     .btn-add-trade:hover { background: #1a68d1; }
 
+    .btn-edit-trade {
+      display: block;
+      width: 100%;
+      margin-top: 8px;
+      padding: 8px 12px;
+      background: #fff;
+      color: #2c7be5;
+      border: 1px solid #2c7be5;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .btn-edit-trade:hover:not(:disabled) { background: #eef4fd; }
+    .btn-edit-trade:disabled {
+      color: #adb5bd;
+      border-color: #dee2e6;
+      cursor: default;
+    }
+
     .main { flex: 1; min-width: 0; }
 
     .table-wrap {
@@ -363,7 +385,7 @@
     <label for="scenario-select">Select a trade scenario:</label>
     <select id="scenario-select">
       {% for s in scenarios %}
-      <option value="{{ s.value }}">{{ s.label }}</option>
+      <option value="{{ s.value }}" data-has-def="{{ 'true' if s.has_definition else 'false' }}">{{ s.label }}</option>
       {% endfor %}
     </select>
 
@@ -378,6 +400,7 @@
     </div>
 
     <button class="btn-add-trade" id="open-modal-btn">+ Add Trade</button>
+    <button class="btn-edit-trade" id="edit-modal-btn" disabled>&#9998; Edit Scenario</button>
   </aside>
 
   <main class="main">
@@ -527,11 +550,27 @@
   }
 
   buildHeader();
-  scenarioSelect.addEventListener("change", () => loadScenario(scenarioSelect.value));
-  if (scenarioSelect.options.length) loadScenario(scenarioSelect.value);
+
+  const editBtn = document.getElementById("edit-modal-btn");
+
+  function syncEditButton() {
+    const opt = scenarioSelect.options[scenarioSelect.selectedIndex];
+    const hasDef = opt && opt.dataset.hasDef === "true";
+    editBtn.disabled = !hasDef;
+  }
+
+  scenarioSelect.addEventListener("change", () => {
+    loadScenario(scenarioSelect.value);
+    syncEditButton();
+  });
+  if (scenarioSelect.options.length) {
+    loadScenario(scenarioSelect.value);
+    syncEditButton();
+  }
 
   /* ── Modal ── */
   const backdrop     = document.getElementById("modal-backdrop");
+  const modalTitle   = document.getElementById("modal-title");
   const openBtn      = document.getElementById("open-modal-btn");
   const closeBtn     = document.getElementById("modal-close-btn");
   const cancelBtn    = document.getElementById("cancel-btn");
@@ -544,14 +583,15 @@
   const addPlayerBtn = document.getElementById("add-player-btn");
   const addPickBtn   = document.getElementById("add-pick-btn");
 
-  let rowCounter = 0;
+  let rowCounter  = 0;
+  let editingName = null;
 
   function toSnakeCase(s) {
     return s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
   }
 
   function teamOptions(selected, includeFA) {
-    let html = includeFA ? `<option value="">Free Agency</option>` : "";
+    let html = `<option value=""${!selected && includeFA ? " selected" : ""}>${includeFA ? "Free Agency" : "From team\u2026"}</option>`;
     TEAMS.forEach(t => {
       const sel = t === selected ? " selected" : "";
       html += `<option value="${t}"${sel}>${t}</option>`;
@@ -564,25 +604,28 @@
     emptyMsg.style.display = rows.length ? "none" : "block";
   }
 
-  function addPlayerRow() {
+  function addPlayerRow(vals) {
     rowCounter++;
     const id = rowCounter;
+    const v  = vals || {};
     const div = document.createElement("div");
     div.className = "trade-row";
     div.dataset.type = "player";
     div.dataset.id   = id;
+    const isFA       = !v.to_team;
+    const penDisplay = isFA ? "flex" : "none";
     div.innerHTML = `
       <span class="row-type-badge player">Player</span>
-      <input class="inp-player" type="text" placeholder="Player name" data-field="player">
-      <select class="inp-team" data-field="from_team"><option value="">From team&hellip;</option>${teamOptions("", false)}</select>
+      <input class="inp-player" type="text" placeholder="Player name" data-field="player" value="${v.player || ""}">
+      <select class="inp-team" data-field="from_team">${teamOptions(v.from_team || "", false)}</select>
       <span style="font-size:12px;color:#6c757d;">&rarr;</span>
-      <select class="inp-team" data-field="to_team"><option value="">Free Agency</option>${teamOptions("", false)}</select>
-      <label class="chk-wrap" title="Force keep/drop after trade">
-        <input type="checkbox" data-field="force_keeper"> Force Drop
+      <select class="inp-team" data-field="to_team">${teamOptions(v.to_team || "", true)}</select>
+      <label class="chk-wrap" title="Force drop after trade">
+        <input type="checkbox" data-field="force_keeper"${v.force_keeper === "0" ? " checked" : ""}> Force Drop
       </label>
-      <span class="penalty-wrap" id="penalty-wrap-${id}" style="display:none">
+      <span class="penalty-wrap" id="penalty-wrap-${id}" style="display:${penDisplay}">
         <label style="font-size:11px;color:#495057;">Penalty $</label>
-        <input class="inp-penalty" type="number" min="0" placeholder="0" data-field="drop_penalty">
+        <input class="inp-penalty" type="number" min="0" placeholder="0" data-field="drop_penalty" value="${v.drop_penalty || ""}">
       </span>
       <button class="btn-del-row" data-del="${id}" aria-label="Remove row">&times;</button>
     `;
@@ -600,25 +643,26 @@
 
     tradeRowsEl.appendChild(div);
     syncEmptyMsg();
-    div.querySelector(".inp-player").focus();
+    if (!vals) div.querySelector(".inp-player").focus();
   }
 
-  function addPickRow() {
+  function addPickRow(vals) {
     rowCounter++;
     const id = rowCounter;
+    const v  = vals || {};
     const div = document.createElement("div");
     div.className = "trade-row";
     div.dataset.type = "pick";
     div.dataset.id   = id;
     div.innerHTML = `
       <span class="row-type-badge pick">Pick</span>
-      <select class="inp-team" data-field="from_team"><option value="">From team&hellip;</option>${teamOptions("", false)}</select>
+      <select class="inp-team" data-field="from_team">${teamOptions(v.from_team || "", false)}</select>
       <span style="font-size:12px;color:#6c757d;">&rarr;</span>
-      <select class="inp-team" data-field="to_team"><option value="">To team&hellip;</option>${teamOptions("", false)}</select>
+      <select class="inp-team" data-field="to_team">${teamOptions(v.to_team || "", false)}</select>
       <label style="font-size:11px;color:#495057;">Rd</label>
-      <input class="inp-round" type="number" min="1" max="30" placeholder="1" data-field="round">
+      <input class="inp-round" type="number" min="1" max="30" placeholder="1" data-field="round" value="${v.round || ""}">
       <label style="font-size:11px;color:#495057;">Pick</label>
-      <input class="inp-pick" type="number" min="1" max="12" placeholder="1" data-field="pick">
+      <input class="inp-pick" type="number" min="1" max="12" placeholder="1" data-field="pick" value="${v.pick || ""}">
       <button class="btn-del-row" data-del="${id}" aria-label="Remove row">&times;</button>
     `;
 
@@ -643,68 +687,89 @@
       };
 
       if (type === "player") {
-        rows.push({
-          type,
-          player:       get("player"),
-          from_team:    get("from_team"),
-          to_team:      get("to_team"),
-          force_keeper: get("force_keeper"),
-          drop_penalty: get("drop_penalty"),
-        });
+        rows.push({ type, player: get("player"), from_team: get("from_team"),
+          to_team: get("to_team"), force_keeper: get("force_keeper"), drop_penalty: get("drop_penalty") });
       } else {
-        rows.push({
-          type,
-          from_team: get("from_team"),
-          to_team:   get("to_team"),
-          round:     get("round"),
-          pick:      get("pick"),
-        });
+        rows.push({ type, from_team: get("from_team"), to_team: get("to_team"),
+          round: get("round"), pick: get("pick") });
       }
     });
     return rows;
   }
 
-  function openModal() {
-    backdrop.classList.add("open");
-    nameInput.value = "";
-    namePreview.innerHTML = "";
+  function resetModal() {
     tradeRowsEl.querySelectorAll(".trade-row").forEach(r => r.remove());
     syncEmptyMsg();
     modalMsg.textContent = "";
     modalMsg.className = "modal-msg";
     saveBtn.disabled = false;
+  }
+
+  function openAddModal() {
+    editingName = null;
+    modalTitle.textContent = "Add Trade Scenario";
+    saveBtn.textContent = "Save Scenario";
+    nameInput.value = "";
+    nameInput.disabled = false;
+    namePreview.innerHTML = "";
+    resetModal();
+    backdrop.classList.add("open");
     nameInput.focus();
+  }
+
+  async function openEditModal() {
+    const name = scenarioSelect.value;
+    editingName = name;
+    modalTitle.textContent = "Edit Trade Scenario";
+    saveBtn.textContent = "Update Scenario";
+    nameInput.value = name.replace(/_/g, " ");
+    nameInput.disabled = true;
+    namePreview.innerHTML = `Editing <code>${name}.csv</code>`;
+    resetModal();
+
+    modalMsg.textContent = "Loading\u2026";
+    backdrop.classList.add("open");
+
+    try {
+      const res  = await fetch(`/api/scenarios/${encodeURIComponent(name)}/definition`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Load failed");
+
+      data.rows.forEach(row => {
+        if (row.type === "player") addPlayerRow(row);
+        else addPickRow(row);
+      });
+
+      modalMsg.textContent = "";
+    } catch (err) {
+      modalMsg.textContent = "Error loading: " + err.message;
+      modalMsg.className = "modal-msg error";
+    }
   }
 
   function closeModal() {
     backdrop.classList.remove("open");
+    editingName = null;
+    nameInput.disabled = false;
   }
 
   nameInput.addEventListener("input", () => {
+    if (editingName) return;
     const snake = toSnakeCase(nameInput.value);
-    namePreview.innerHTML = snake
-      ? `Will be saved as <code>${snake}.csv</code>`
-      : "";
+    namePreview.innerHTML = snake ? `Will be saved as <code>${snake}.csv</code>` : "";
   });
 
-  openBtn.addEventListener("click", openModal);
+  openBtn.addEventListener("click", openAddModal);
+  editBtn.addEventListener("click", openEditModal);
   closeBtn.addEventListener("click", closeModal);
   cancelBtn.addEventListener("click", closeModal);
   backdrop.addEventListener("click", e => { if (e.target === backdrop) closeModal(); });
-  addPlayerBtn.addEventListener("click", addPlayerRow);
-  addPickBtn.addEventListener("click", addPickRow);
+  addPlayerBtn.addEventListener("click", () => addPlayerRow());
+  addPickBtn.addEventListener("click", () => addPickRow());
 
   saveBtn.addEventListener("click", async () => {
     modalMsg.textContent = "";
     modalMsg.className = "modal-msg";
-
-    const name = nameInput.value.trim();
-    if (!name) {
-      modalMsg.textContent = "Please enter a scenario name.";
-      modalMsg.className = "modal-msg error";
-      nameInput.focus();
-      return;
-    }
 
     const rows = collectRows();
     if (!rows.length) {
@@ -713,26 +778,52 @@
       return;
     }
 
-    saveBtn.disabled = true;
-    modalMsg.textContent = "Saving\u2026";
-    modalMsg.className = "modal-msg";
+    if (!editingName) {
+      const name = nameInput.value.trim();
+      if (!name) {
+        modalMsg.textContent = "Please enter a scenario name.";
+        modalMsg.className = "modal-msg error";
+        nameInput.focus();
+        return;
+      }
 
-    try {
-      const res = await fetch("/api/scenarios", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ name, rows }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Save failed");
+      saveBtn.disabled = true;
+      modalMsg.textContent = "Saving\u2026";
 
-      modalMsg.textContent = `Saved as scenarios/${data.name}.csv`;
-      modalMsg.className = "modal-msg success";
-      setTimeout(closeModal, 1800);
-    } catch (err) {
-      modalMsg.textContent = "Error: " + err.message;
-      modalMsg.className = "modal-msg error";
-      saveBtn.disabled = false;
+      try {
+        const res = await fetch("/api/scenarios", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, rows }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Save failed");
+        modalMsg.textContent = `Saved as scenarios/${data.name}.csv`;
+        modalMsg.className = "modal-msg success";
+        setTimeout(closeModal, 1800);
+      } catch (err) {
+        modalMsg.textContent = "Error: " + err.message;
+        modalMsg.className = "modal-msg error";
+        saveBtn.disabled = false;
+      }
+    } else {
+      saveBtn.disabled = true;
+      modalMsg.textContent = "Updating\u2026";
+
+      try {
+        const res = await fetch(`/api/scenarios/${encodeURIComponent(editingName)}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Update failed");
+        modalMsg.textContent = `Updated scenarios/${data.name}.csv`;
+        modalMsg.className = "modal-msg success";
+        setTimeout(closeModal, 1800);
+      } catch (err) {
+        modalMsg.textContent = "Error: " + err.message;
+        modalMsg.className = "modal-msg error";
+        saveBtn.disabled = false;
+      }
     }
   });
 
