@@ -11,10 +11,6 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 62654
-externalPort = 3003
-
-[[ports]]
 localPort = 63967
 externalPort = 3001
 
@@ -42,13 +38,13 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "RENV_CONFIG_AUTOLOADER_ENABLED=FALSE Rscript run_app.R"
 waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [deployment]
 deploymentTarget = "autoscale"
