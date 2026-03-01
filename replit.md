@@ -8,24 +8,35 @@ R Shiny web applications for the Billiken League fantasy baseball analysis. Incl
   - Dropdown to select a trade scenario; displays simulated delta impact on projected standings
   - Reads `data/scenarios/<name>/latest.txt` → `<timestamp>/delta_summary.csv`
   - Excludes `_baseline` folder; handles absolute Mac paths in `latest.txt` via `basename()`
+  - Uses only base R + shiny + DT (no dplyr/readr; avoids heavy compilation dependencies)
 - **Draft Assistant** (`DraftAssistant/`) — kept but not the active workflow
   - `DraftAssistant/server.R` - Server logic, data loading, analytics
   - `DraftAssistant/ui.R` - User interface definition
 - **Run script**: `run_app.R` - Launches the active Shiny app on port 5000
 
-## Key Dependencies
+## Key Dependencies (TradeScenarios)
 - **R 4.5** runtime
-- **shiny** - Web application framework
-- **tidyverse** - Data manipulation (dplyr, tidyr, stringr, ggplot2, etc.)
-- **googlesheets4** - Google Sheets integration (reads draft/roster data)
-- **fuzzyjoin** / **stringdist** - Fuzzy player name matching
+- **shiny** - Web application framework (no C/C++ code itself)
 - **DT** - Interactive data tables
-- **stringi** - String processing (requires libicu74)
+- **httpuv** - HTTP server for shiny (requires compilation with zlib headers)
+- Base R only for data loading (`read.csv`) and manipulation
 
 ## Package Management
-Packages are installed to `/home/runner/R/x86_64-pc-linux-gnu-library/4.5` (bypassing renv due to R version mismatch between lockfile R 4.4.3 and available R 4.5.2).
+**IMPORTANT**: Packages are stored in `r-packages/` inside the project directory (persists across Replit environment resets). Do NOT use `/home/runner/R/...` — that path is wiped on environment reset.
 
-renv is disabled at startup via `RENV_CONFIG_AUTOLOADER_ENABLED=FALSE` in the workflow command.
+### First-time or after package loss
+1. `run_app.R` auto-detects missing packages and installs them on startup
+2. For compiled packages needing system libs (e.g. `httpuv` needs zlib): the Makevars file at `r-packages/.Makevars` is auto-written with zlib compile flags via `pkg-config`
+3. If install hangs or produces empty directories (from killed installs), use `R CMD INSTALL --no-byte-compile --no-staged-install` for each package:
+   ```bash
+   rm -rf r-packages/00LOCK-*
+   curl -sfL -o /tmp/pkg.tar.gz 'https://packagemanager.posit.co/cran/__linux__/noble/latest/src/contrib/<pkg>_<ver>.tar.gz'
+   RENV_CONFIG_AUTOLOADER_ENABLED=FALSE R CMD INSTALL --no-byte-compile --no-staged-install --library=r-packages /tmp/pkg.tar.gz
+   ```
+4. Clean stale locks before any install: `rm -rf r-packages/00LOCK-*`
+5. Verify install: `ls r-packages/<pkgname>/DESCRIPTION`
+
+renv is disabled via `RENV_CONFIG_AUTOLOADER_ENABLED=FALSE` (R 4.5.2 vs lockfile R 4.4.3 mismatch).
 
 ## Configuration
 - **BILLIKEN_SHEET_ID** (secret) - Google Sheets ID for draft data
@@ -42,6 +53,7 @@ renv is disabled at startup via `RENV_CONFIG_AUTOLOADER_ENABLED=FALSE` in the wo
 - `data/scenarios/<name>/<timestamp>/delta_summary.csv` - Simulation results; columns: team, baseline_*, scenario_*, delta_*
 - `scenarios/<name>.csv` - Trade definition CSV files
 - `scripts/` - Data update and analysis scripts
+- `r-packages/` - Local R library (gitignored; persists in Replit filesystem)
 
 ## Workflow
 - **Start application**: `RENV_CONFIG_AUTOLOADER_ENABLED=FALSE Rscript run_app.R`

@@ -4,7 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["curl", "openssl", "icu", "zlib", "gnumake", "pandoc", "icu74"]
+packages = ["curl", "openssl", "icu", "zlib", "gnumake", "pandoc", "icu74", "pkg-config"]
 
 [[ports]]
 localPort = 5000

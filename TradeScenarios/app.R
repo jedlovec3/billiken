@@ -1,6 +1,4 @@
 library(shiny)
-library(dplyr)
-library(readr)
 library(DT)
 
 scenarios_dir <- "../data/scenarios"
@@ -8,10 +6,9 @@ scenarios_dir <- "../data/scenarios"
 get_scenarios <- function() {
   dirs <- list.dirs(scenarios_dir, recursive = FALSE, full.names = FALSE)
   dirs <- dirs[dirs != "_baseline"]
-  valid <- dirs[vapply(dirs, function(d) {
+  dirs[vapply(dirs, function(d) {
     file.exists(file.path(scenarios_dir, d, "latest.txt"))
   }, logical(1))]
-  valid
 }
 
 prettify <- function(name) {
@@ -19,28 +16,28 @@ prettify <- function(name) {
 }
 
 load_delta <- function(scenario_name) {
-  latest_path <- readLines(file.path(scenarios_dir, scenario_name, "latest.txt"), warn = FALSE)
-  latest_path <- trimws(latest_path[1])
+  latest_path <- trimws(readLines(file.path(scenarios_dir, scenario_name, "latest.txt"), warn = FALSE)[1])
   run_folder  <- basename(latest_path)
   csv_path    <- file.path(scenarios_dir, scenario_name, run_folder, "delta_summary.csv")
-  df <- read_csv(csv_path, show_col_types = FALSE)
-  df %>%
-    select(
-      Team            = team,
-      `Baseline Pts`  = baseline_avg_pts,
-      `Scenario Pts`  = scenario_avg_pts,
-      `Δ Pts`         = delta_avg_pts,
-      `Δ Rank`        = delta_avg_rank,
-      `Δ Wins`        = delta_wins,
-      `Δ Top 3`       = delta_top_3,
-      `Δ Hit Pts`     = delta_avg_hit_pts,
-      `Δ Pitch Pts`   = delta_avg_pit_pts
-    ) %>%
-    mutate(across(where(is.numeric), ~ round(.x, 1))) %>%
-    arrange(desc(`Δ Pts`))
+
+  df <- read.csv(csv_path, stringsAsFactors = FALSE)
+
+  keep <- c("team", "baseline_avg_pts", "scenario_avg_pts",
+            "delta_avg_pts", "delta_avg_rank", "delta_wins",
+            "delta_top_3", "delta_avg_hit_pts", "delta_avg_pit_pts")
+  df <- df[, keep]
+
+  colnames(df) <- c("Team", "Baseline Pts", "Scenario Pts",
+                    "\u0394 Pts", "\u0394 Rank", "\u0394 Wins",
+                    "\u0394 Top 3", "\u0394 Hit Pts", "\u0394 Pitch Pts")
+
+  num_cols <- colnames(df)[colnames(df) != "Team"]
+  df[num_cols] <- lapply(df[num_cols], round, digits = 1)
+
+  df[order(-df[["\u0394 Pts"]]), ]
 }
 
-scenario_names  <- get_scenarios()
+scenario_names   <- get_scenarios()
 scenario_choices <- setNames(scenario_names, vapply(scenario_names, prettify, character(1)))
 
 ui <- fluidPage(
