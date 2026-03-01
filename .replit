@@ -47,5 +47,5 @@ args = "RENV_CONFIG_AUTOLOADER_ENABLED=FALSE Rscript run_app.R"
 waitForPort = 5000
 
 [deployment]
-deploymentTarget = "autoscale"
+deploymentTarget = "vm"
 run = ["bash", "-c", "RENV_CONFIG_AUTOLOADER_ENABLED=FALSE Rscript run_app.R"]
