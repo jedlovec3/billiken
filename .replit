@@ -1,18 +1,14 @@
-modules = ["web", "r-4.5"]
+modules = ["web", "r-4.5", "python-3.11"]
 [agent]
 expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["curl", "openssl", "icu", "zlib", "gnumake", "pandoc", "icu74", "pkg-config"]
+packages = ["curl", "gnumake", "icu", "icu74", "openssl", "pandoc", "pkg-config", "zlib"]
 
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 62654
-externalPort = 3003
 
 [[ports]]
 localPort = 63967
@@ -47,9 +43,9 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "RENV_CONFIG_AUTOLOADER_ENABLED=FALSE Rscript run_app.R"
+args = "python app.py"
 waitForPort = 5000
 
 [deployment]
 deploymentTarget = "vm"
-run = ["bash", "-c", "RENV_CONFIG_AUTOLOADER_ENABLED=FALSE Rscript run_app.R"]
+run = ["python", "app.py"]

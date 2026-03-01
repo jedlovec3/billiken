@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Billiken League — Trade Scenarios</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      color: #212529;
+      background: #f5f6f7;
+    }
+
+    header {
+      background: #fff;
+      border-bottom: 1px solid #dee2e6;
+      padding: 16px 24px 12px;
+    }
+
+    header h1 {
+      font-size: 22px;
+      font-weight: 600;
+    }
+
+    header p {
+      color: #6c757d;
+      font-size: 13px;
+      margin-top: 2px;
+    }
+
+    .layout {
+      display: flex;
+      gap: 20px;
+      padding: 20px 24px;
+      align-items: flex-start;
+    }
+
+    .sidebar {
+      width: 220px;
+      flex-shrink: 0;
+    }
+
+    .sidebar label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+
+    .sidebar select {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      font-size: 13px;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    .guide {
+      margin-top: 18px;
+      font-size: 11.5px;
+      color: #6c757d;
+      line-height: 1.7;
+    }
+
+    .guide strong {
+      color: #495057;
+    }
+
+    .guide .guide-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .main {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .table-wrap {
+      background: #fff;
+      border: 1px solid #dee2e6;
+      border-radius: 6px;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead th {
+      background: #f8f9fa;
+      border-bottom: 2px solid #dee2e6;
+      padding: 10px 14px;
+      text-align: right;
+      font-size: 12px;
+      font-weight: 600;
+      color: #495057;
+      white-space: nowrap;
+      user-select: none;
+      cursor: pointer;
+    }
+
+    thead th.team-col {
+      text-align: left;
+    }
+
+    thead th:hover {
+      background: #e9ecef;
+    }
+
+    thead th .sort-arrow {
+      display: inline-block;
+      margin-left: 4px;
+      opacity: 0.4;
+      font-size: 10px;
+    }
+
+    thead th.sorted-asc .sort-arrow::after  { content: '▲'; opacity: 1; }
+    thead th.sorted-desc .sort-arrow::after { content: '▼'; opacity: 1; }
+    thead th:not(.sorted-asc):not(.sorted-desc) .sort-arrow::after { content: '⇅'; }
+
+    tbody tr:nth-child(odd)  { background: #fff; }
+    tbody tr:nth-child(even) { background: #f8f9fa; }
+    tbody tr:hover           { background: #e8f4ff; }
+
+    tbody td {
+      padding: 9px 14px;
+      text-align: right;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    tbody td.team-col {
+      text-align: left;
+      font-weight: 500;
+    }
+
+    .pos  { color: #27ae60; font-weight: 700; }
+    .neg  { color: #c0392b; font-weight: 700; }
+    .zero { color: #6c757d; font-weight: 700; }
+
+    .rank-pos { color: #27ae60; font-weight: 700; }
+    .rank-neg { color: #c0392b; font-weight: 700; }
+
+    #status {
+      padding: 20px;
+      color: #6c757d;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Billiken League &mdash; Trade Scenarios</h1>
+  <p>Simulated impact of each trade on projected standings</p>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <label for="scenario-select">Select a trade scenario:</label>
+    <select id="scenario-select">
+      {% for s in scenarios %}
+      <option value="{{ s.value }}">{{ s.label }}</option>
+      {% endfor %}
+    </select>
+
+    <div class="guide">
+      <div class="guide-title">Column guide:</div>
+      &Delta; = difference vs baseline simulation.<br><br>
+      <strong>&Delta; Pts</strong> &mdash; projected standing points<br>
+      <strong>&Delta; Rank</strong> &mdash; avg finish (negative = better)<br>
+      <strong>&Delta; Wins</strong> &mdash; championship wins<br>
+      <strong>&Delta; Top 3</strong> &mdash; top-3 finishes<br>
+      <strong>&Delta; Hit / Pitch Pts</strong> &mdash; hitting &amp; pitching points
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="table-wrap">
+      <div id="status">Loading&hellip;</div>
+      <table id="data-table" style="display:none">
+        <thead id="table-head"></thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script>
+  const COLS = [
+    "Team", "Baseline Pts", "Scenario Pts",
+    "\u0394 Pts", "\u0394 Rank", "\u0394 Wins",
+    "\u0394 Top 3", "\u0394 Hit Pts", "\u0394 Pitch Pts"
+  ];
+
+  let currentData = [];
+  let sortCol = "\u0394 Pts";
+  let sortDir = -1;
+
+  const select   = document.getElementById("scenario-select");
+  const status   = document.getElementById("status");
+  const table    = document.getElementById("data-table");
+  const thead    = document.getElementById("table-head");
+  const tbody    = document.getElementById("table-body");
+
+  function buildHeader() {
+    thead.innerHTML = "";
+    const tr = document.createElement("tr");
+    COLS.forEach(col => {
+      const th = document.createElement("th");
+      if (col === "Team") th.classList.add("team-col");
+      th.dataset.col = col;
+
+      const label = document.createTextNode(col);
+      const arrow = document.createElement("span");
+      arrow.className = "sort-arrow";
+      th.appendChild(label);
+      th.appendChild(arrow);
+
+      th.addEventListener("click", () => {
+        if (sortCol === col) {
+          sortDir *= -1;
+        } else {
+          sortCol = col;
+          sortDir = col === "Team" ? 1 : -1;
+        }
+        renderTable();
+      });
+
+      tr.appendChild(th);
+    });
+    thead.appendChild(tr);
+  }
+
+  function cellClass(col, val) {
+    if (col === "\u0394 Pts") {
+      if (val > 0) return "pos";
+      if (val < 0) return "neg";
+      return "zero";
+    }
+    if (col === "\u0394 Rank") {
+      if (val < 0) return "rank-pos";
+      if (val > 0) return "rank-neg";
+      return "zero";
+    }
+    return "";
+  }
+
+  function renderTable() {
+    const sorted = [...currentData].sort((a, b) => {
+      const av = a[sortCol], bv = b[sortCol];
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * sortDir;
+      return String(av).localeCompare(String(bv)) * sortDir;
+    });
+
+    tbody.innerHTML = "";
+    sorted.forEach(row => {
+      const tr = document.createElement("tr");
+      COLS.forEach(col => {
+        const td = document.createElement("td");
+        if (col === "Team") td.classList.add("team-col");
+        const val = row[col];
+        td.textContent = val;
+        const cls = cellClass(col, val);
+        if (cls) td.classList.add(cls);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+
+    document.querySelectorAll("thead th").forEach(th => {
+      th.classList.remove("sorted-asc", "sorted-desc");
+      if (th.dataset.col === sortCol) {
+        th.classList.add(sortDir === 1 ? "sorted-asc" : "sorted-desc");
+      }
+    });
+  }
+
+  async function loadScenario(name) {
+    status.textContent = "Loading\u2026";
+    status.style.display = "block";
+    table.style.display  = "none";
+
+    try {
+      const res  = await fetch(`/api/scenario/${encodeURIComponent(name)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      currentData = data;
+      sortCol = "\u0394 Pts";
+      sortDir = -1;
+      renderTable();
+      status.style.display = "none";
+      table.style.display  = "table";
+    } catch (err) {
+      status.textContent = "Error: " + err.message;
+    }
+  }
+
+  buildHeader();
+  select.addEventListener("change", () => loadScenario(select.value));
+  if (select.options.length) loadScenario(select.value);
+</script>
+
+</body>
+</html>
