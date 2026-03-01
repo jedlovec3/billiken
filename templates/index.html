@@ -20,16 +20,8 @@
       padding: 16px 24px 12px;
     }
 
-    header h1 {
-      font-size: 22px;
-      font-weight: 600;
-    }
-
-    header p {
-      color: #6c757d;
-      font-size: 13px;
-      margin-top: 2px;
-    }
+    header h1 { font-size: 22px; font-weight: 600; }
+    header p  { color: #6c757d; font-size: 13px; margin-top: 2px; }
 
     .layout {
       display: flex;
@@ -38,10 +30,7 @@
       align-items: flex-start;
     }
 
-    .sidebar {
-      width: 220px;
-      flex-shrink: 0;
-    }
+    .sidebar { width: 220px; flex-shrink: 0; }
 
     .sidebar label {
       display: block;
@@ -67,19 +56,27 @@
       line-height: 1.7;
     }
 
-    .guide strong {
-      color: #495057;
-    }
+    .guide strong { color: #495057; }
+    .guide .guide-title { font-weight: 600; margin-bottom: 4px; }
 
-    .guide .guide-title {
+    .btn-add-trade {
+      display: block;
+      width: 100%;
+      margin-top: 16px;
+      padding: 8px 12px;
+      background: #2c7be5;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
       font-weight: 600;
-      margin-bottom: 4px;
+      cursor: pointer;
+      text-align: center;
     }
 
-    .main {
-      flex: 1;
-      min-width: 0;
-    }
+    .btn-add-trade:hover { background: #1a68d1; }
+
+    .main { flex: 1; min-width: 0; }
 
     .table-wrap {
       background: #fff;
@@ -88,10 +85,7 @@
       overflow-x: auto;
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
+    table { width: 100%; border-collapse: collapse; }
 
     thead th {
       background: #f8f9fa;
@@ -106,22 +100,11 @@
       cursor: pointer;
     }
 
-    thead th.team-col {
-      text-align: left;
-    }
+    thead th.team-col { text-align: left; }
+    thead th:hover { background: #e9ecef; }
 
-    thead th:hover {
-      background: #e9ecef;
-    }
-
-    thead th .sort-arrow {
-      display: inline-block;
-      margin-left: 4px;
-      opacity: 0.4;
-      font-size: 10px;
-    }
-
-    thead th.sorted-asc .sort-arrow::after  { content: '▲'; opacity: 1; }
+    thead th .sort-arrow { display: inline-block; margin-left: 4px; opacity: 0.4; font-size: 10px; }
+    thead th.sorted-asc  .sort-arrow::after { content: '▲'; opacity: 1; }
     thead th.sorted-desc .sort-arrow::after { content: '▼'; opacity: 1; }
     thead th:not(.sorted-asc):not(.sorted-desc) .sort-arrow::after { content: '⇅'; }
 
@@ -129,29 +112,243 @@
     tbody tr:nth-child(even) { background: #f8f9fa; }
     tbody tr:hover           { background: #e8f4ff; }
 
-    tbody td {
-      padding: 9px 14px;
-      text-align: right;
-      border-bottom: 1px solid #f0f0f0;
-    }
-
-    tbody td.team-col {
-      text-align: left;
-      font-weight: 500;
-    }
+    tbody td { padding: 9px 14px; text-align: right; border-bottom: 1px solid #f0f0f0; }
+    tbody td.team-col { text-align: left; font-weight: 500; }
 
     .pos  { color: #27ae60; font-weight: 700; }
     .neg  { color: #c0392b; font-weight: 700; }
     .zero { color: #6c757d; font-weight: 700; }
-
     .rank-pos { color: #27ae60; font-weight: 700; }
     .rank-neg { color: #c0392b; font-weight: 700; }
 
-    #status {
-      padding: 20px;
-      color: #6c757d;
-      font-style: italic;
+    #status { padding: 20px; color: #6c757d; font-style: italic; }
+
+    /* ── Modal ── */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 100;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 40px 16px;
+      overflow-y: auto;
     }
+
+    .modal-backdrop.open { display: flex; }
+
+    .modal {
+      background: #fff;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 780px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 22px 14px;
+      border-bottom: 1px solid #dee2e6;
+    }
+
+    .modal-header h2 { font-size: 17px; font-weight: 600; }
+
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 22px;
+      color: #6c757d;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0 4px;
+    }
+
+    .modal-close:hover { color: #212529; }
+
+    .modal-body { padding: 20px 22px; }
+
+    .field-group { margin-bottom: 16px; }
+
+    .field-group label {
+      display: block;
+      font-weight: 600;
+      font-size: 12px;
+      margin-bottom: 5px;
+      color: #495057;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .field-group input[type="text"],
+    .field-group input[type="number"] {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    .name-preview {
+      margin-top: 4px;
+      font-size: 11px;
+      color: #6c757d;
+    }
+
+    .name-preview code {
+      background: #f0f0f0;
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-size: 11px;
+    }
+
+    .rows-section { margin-top: 4px; }
+
+    .rows-toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .btn-add-row {
+      padding: 6px 12px;
+      border-radius: 4px;
+      border: 1px solid #ced4da;
+      background: #f8f9fa;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-add-row:hover { background: #e9ecef; }
+
+    .trade-rows { display: flex; flex-direction: column; gap: 8px; }
+
+    .trade-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #f8f9fa;
+      border: 1px solid #e2e6ea;
+      border-radius: 5px;
+      padding: 8px 10px;
+      flex-wrap: wrap;
+    }
+
+    .trade-row .row-type-badge {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 2px 7px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    .row-type-badge.player { background: #d4edda; color: #155724; }
+    .row-type-badge.pick   { background: #cce5ff; color: #004085; }
+
+    .trade-row input[type="text"],
+    .trade-row input[type="number"],
+    .trade-row select {
+      padding: 5px 8px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      font-size: 12px;
+      background: #fff;
+    }
+
+    .trade-row .inp-player  { flex: 2; min-width: 120px; }
+    .trade-row .inp-team    { flex: 1.5; min-width: 100px; }
+    .trade-row .inp-round,
+    .trade-row .inp-pick    { width: 64px; }
+    .trade-row .inp-penalty { width: 72px; }
+
+    .trade-row .chk-wrap {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: #495057;
+      white-space: nowrap;
+    }
+
+    .penalty-wrap {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: #495057;
+      white-space: nowrap;
+    }
+
+    .btn-del-row {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: #adb5bd;
+      font-size: 16px;
+      cursor: pointer;
+      flex-shrink: 0;
+      padding: 0 2px;
+    }
+
+    .btn-del-row:hover { color: #c0392b; }
+
+    .empty-rows {
+      text-align: center;
+      color: #adb5bd;
+      font-size: 12px;
+      padding: 16px;
+      border: 1px dashed #dee2e6;
+      border-radius: 5px;
+    }
+
+    .modal-footer {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 22px 18px;
+      border-top: 1px solid #dee2e6;
+    }
+
+    .btn-save {
+      padding: 8px 20px;
+      background: #2c7be5;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-save:hover:not(:disabled) { background: #1a68d1; }
+    .btn-save:disabled { opacity: 0.6; cursor: default; }
+
+    .btn-cancel {
+      padding: 8px 16px;
+      background: none;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      color: #495057;
+    }
+
+    .btn-cancel:hover { background: #f8f9fa; }
+
+    .modal-msg {
+      font-size: 12px;
+      margin-left: 4px;
+    }
+
+    .modal-msg.error   { color: #c0392b; }
+    .modal-msg.success { color: #27ae60; }
   </style>
 </head>
 <body>
@@ -179,6 +376,8 @@
       <strong>&Delta; Top 3</strong> &mdash; top-3 finishes<br>
       <strong>&Delta; Hit / Pitch Pts</strong> &mdash; hitting &amp; pitching points
     </div>
+
+    <button class="btn-add-trade" id="open-modal-btn">+ Add Trade</button>
   </aside>
 
   <main class="main">
@@ -192,7 +391,52 @@
   </main>
 </div>
 
+<!-- ── Add Trade Modal ── -->
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-header">
+      <h2 id="modal-title">Add Trade Scenario</h2>
+      <button class="modal-close" id="modal-close-btn" aria-label="Close">&times;</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="field-group">
+        <label for="scenario-name-input">Scenario Name</label>
+        <input type="text" id="scenario-name-input" placeholder="e.g. Miller for Yam">
+        <div class="name-preview" id="name-preview"></div>
+      </div>
+
+      <div class="rows-section">
+        <div class="field-group" style="margin-bottom:8px">
+          <label>Trade Rows</label>
+        </div>
+        <div class="rows-toolbar">
+          <button class="btn-add-row" id="add-player-btn">+ Add Player Move</button>
+          <button class="btn-add-row" id="add-pick-btn">+ Add Pick Trade</button>
+        </div>
+        <div class="trade-rows" id="trade-rows">
+          <div class="empty-rows" id="empty-rows-msg">No rows yet. Add a player move or pick trade above.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-save" id="save-btn">Save Scenario</button>
+      <button class="btn-cancel" id="cancel-btn">Cancel</button>
+      <span class="modal-msg" id="modal-msg"></span>
+    </div>
+  </div>
+</div>
+
 <script>
+  /* ── Teams ── */
+  const TEAMS = [
+    "MELONHEADS", "WESTSIDE MARAUDERS", "NATIONAL PASTIME",
+    "BLUE SOCKS", "FREE BIRDS", "HOOSIERS", "BIG RED MACHINE",
+    "ERIE LAKERS", "LOUISVILLE SLUGGERS", "FREE AT LAST"
+  ];
+
+  /* ── Main table ── */
   const COLS = [
     "Team", "Baseline Pts", "Scenario Pts",
     "\u0394 Pts", "\u0394 Rank", "\u0394 Wins",
@@ -203,52 +447,36 @@
   let sortCol = "\u0394 Pts";
   let sortDir = -1;
 
-  const select   = document.getElementById("scenario-select");
-  const status   = document.getElementById("status");
-  const table    = document.getElementById("data-table");
-  const thead    = document.getElementById("table-head");
-  const tbody    = document.getElementById("table-body");
+  const scenarioSelect = document.getElementById("scenario-select");
+  const statusEl       = document.getElementById("status");
+  const tableEl        = document.getElementById("data-table");
+  const theadEl        = document.getElementById("table-head");
+  const tbodyEl        = document.getElementById("table-body");
 
   function buildHeader() {
-    thead.innerHTML = "";
+    theadEl.innerHTML = "";
     const tr = document.createElement("tr");
     COLS.forEach(col => {
       const th = document.createElement("th");
       if (col === "Team") th.classList.add("team-col");
       th.dataset.col = col;
-
-      const label = document.createTextNode(col);
+      th.appendChild(document.createTextNode(col));
       const arrow = document.createElement("span");
       arrow.className = "sort-arrow";
-      th.appendChild(label);
       th.appendChild(arrow);
-
       th.addEventListener("click", () => {
-        if (sortCol === col) {
-          sortDir *= -1;
-        } else {
-          sortCol = col;
-          sortDir = col === "Team" ? 1 : -1;
-        }
+        sortDir = (sortCol === col) ? sortDir * -1 : (col === "Team" ? 1 : -1);
+        sortCol = col;
         renderTable();
       });
-
       tr.appendChild(th);
     });
-    thead.appendChild(tr);
+    theadEl.appendChild(tr);
   }
 
   function cellClass(col, val) {
-    if (col === "\u0394 Pts") {
-      if (val > 0) return "pos";
-      if (val < 0) return "neg";
-      return "zero";
-    }
-    if (col === "\u0394 Rank") {
-      if (val < 0) return "rank-pos";
-      if (val > 0) return "rank-neg";
-      return "zero";
-    }
+    if (col === "\u0394 Pts") return val > 0 ? "pos" : val < 0 ? "neg" : "zero";
+    if (col === "\u0394 Rank") return val < 0 ? "rank-pos" : val > 0 ? "rank-neg" : "zero";
     return "";
   }
 
@@ -259,52 +487,258 @@
       return String(av).localeCompare(String(bv)) * sortDir;
     });
 
-    tbody.innerHTML = "";
+    tbodyEl.innerHTML = "";
     sorted.forEach(row => {
       const tr = document.createElement("tr");
       COLS.forEach(col => {
         const td = document.createElement("td");
         if (col === "Team") td.classList.add("team-col");
-        const val = row[col];
-        td.textContent = val;
-        const cls = cellClass(col, val);
+        td.textContent = row[col];
+        const cls = cellClass(col, row[col]);
         if (cls) td.classList.add(cls);
         tr.appendChild(td);
       });
-      tbody.appendChild(tr);
+      tbodyEl.appendChild(tr);
     });
 
     document.querySelectorAll("thead th").forEach(th => {
       th.classList.remove("sorted-asc", "sorted-desc");
-      if (th.dataset.col === sortCol) {
+      if (th.dataset.col === sortCol)
         th.classList.add(sortDir === 1 ? "sorted-asc" : "sorted-desc");
-      }
     });
   }
 
   async function loadScenario(name) {
-    status.textContent = "Loading\u2026";
-    status.style.display = "block";
-    table.style.display  = "none";
-
+    statusEl.textContent = "Loading\u2026";
+    statusEl.style.display = "block";
+    tableEl.style.display  = "none";
     try {
       const res  = await fetch(`/api/scenario/${encodeURIComponent(name)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Request failed");
       currentData = data;
-      sortCol = "\u0394 Pts";
-      sortDir = -1;
+      sortCol = "\u0394 Pts"; sortDir = -1;
       renderTable();
-      status.style.display = "none";
-      table.style.display  = "table";
+      statusEl.style.display = "none";
+      tableEl.style.display  = "table";
     } catch (err) {
-      status.textContent = "Error: " + err.message;
+      statusEl.textContent = "Error: " + err.message;
     }
   }
 
   buildHeader();
-  select.addEventListener("change", () => loadScenario(select.value));
-  if (select.options.length) loadScenario(select.value);
+  scenarioSelect.addEventListener("change", () => loadScenario(scenarioSelect.value));
+  if (scenarioSelect.options.length) loadScenario(scenarioSelect.value);
+
+  /* ── Modal ── */
+  const backdrop     = document.getElementById("modal-backdrop");
+  const openBtn      = document.getElementById("open-modal-btn");
+  const closeBtn     = document.getElementById("modal-close-btn");
+  const cancelBtn    = document.getElementById("cancel-btn");
+  const saveBtn      = document.getElementById("save-btn");
+  const nameInput    = document.getElementById("scenario-name-input");
+  const namePreview  = document.getElementById("name-preview");
+  const tradeRowsEl  = document.getElementById("trade-rows");
+  const emptyMsg     = document.getElementById("empty-rows-msg");
+  const modalMsg     = document.getElementById("modal-msg");
+  const addPlayerBtn = document.getElementById("add-player-btn");
+  const addPickBtn   = document.getElementById("add-pick-btn");
+
+  let rowCounter = 0;
+
+  function toSnakeCase(s) {
+    return s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  }
+
+  function teamOptions(selected, includeFA) {
+    let html = includeFA ? `<option value="">Free Agency</option>` : "";
+    TEAMS.forEach(t => {
+      const sel = t === selected ? " selected" : "";
+      html += `<option value="${t}"${sel}>${t}</option>`;
+    });
+    return html;
+  }
+
+  function syncEmptyMsg() {
+    const rows = tradeRowsEl.querySelectorAll(".trade-row");
+    emptyMsg.style.display = rows.length ? "none" : "block";
+  }
+
+  function addPlayerRow() {
+    rowCounter++;
+    const id = rowCounter;
+    const div = document.createElement("div");
+    div.className = "trade-row";
+    div.dataset.type = "player";
+    div.dataset.id   = id;
+    div.innerHTML = `
+      <span class="row-type-badge player">Player</span>
+      <input class="inp-player" type="text" placeholder="Player name" data-field="player">
+      <select class="inp-team" data-field="from_team"><option value="">From team&hellip;</option>${teamOptions("", false)}</select>
+      <span style="font-size:12px;color:#6c757d;">&rarr;</span>
+      <select class="inp-team" data-field="to_team"><option value="">Free Agency</option>${teamOptions("", false)}</select>
+      <label class="chk-wrap" title="Force keep/drop after trade">
+        <input type="checkbox" data-field="force_keeper"> Force Drop
+      </label>
+      <span class="penalty-wrap" id="penalty-wrap-${id}" style="display:none">
+        <label style="font-size:11px;color:#495057;">Penalty $</label>
+        <input class="inp-penalty" type="number" min="0" placeholder="0" data-field="drop_penalty">
+      </span>
+      <button class="btn-del-row" data-del="${id}" aria-label="Remove row">&times;</button>
+    `;
+
+    const toSel = div.querySelector('[data-field="to_team"]');
+    const penaltyWrap = div.querySelector(`#penalty-wrap-${id}`);
+    toSel.addEventListener("change", () => {
+      penaltyWrap.style.display = toSel.value === "" ? "flex" : "none";
+    });
+
+    div.querySelector(`[data-del="${id}"]`).addEventListener("click", () => {
+      div.remove();
+      syncEmptyMsg();
+    });
+
+    tradeRowsEl.appendChild(div);
+    syncEmptyMsg();
+    div.querySelector(".inp-player").focus();
+  }
+
+  function addPickRow() {
+    rowCounter++;
+    const id = rowCounter;
+    const div = document.createElement("div");
+    div.className = "trade-row";
+    div.dataset.type = "pick";
+    div.dataset.id   = id;
+    div.innerHTML = `
+      <span class="row-type-badge pick">Pick</span>
+      <select class="inp-team" data-field="from_team"><option value="">From team&hellip;</option>${teamOptions("", false)}</select>
+      <span style="font-size:12px;color:#6c757d;">&rarr;</span>
+      <select class="inp-team" data-field="to_team"><option value="">To team&hellip;</option>${teamOptions("", false)}</select>
+      <label style="font-size:11px;color:#495057;">Rd</label>
+      <input class="inp-round" type="number" min="1" max="30" placeholder="1" data-field="round">
+      <label style="font-size:11px;color:#495057;">Pick</label>
+      <input class="inp-pick" type="number" min="1" max="12" placeholder="1" data-field="pick">
+      <button class="btn-del-row" data-del="${id}" aria-label="Remove row">&times;</button>
+    `;
+
+    div.querySelector(`[data-del="${id}"]`).addEventListener("click", () => {
+      div.remove();
+      syncEmptyMsg();
+    });
+
+    tradeRowsEl.appendChild(div);
+    syncEmptyMsg();
+  }
+
+  function collectRows() {
+    const rows = [];
+    tradeRowsEl.querySelectorAll(".trade-row").forEach(div => {
+      const type = div.dataset.type;
+      const get = field => {
+        const el = div.querySelector(`[data-field="${field}"]`);
+        if (!el) return "";
+        if (el.type === "checkbox") return el.checked ? "0" : "";
+        return el.value.trim();
+      };
+
+      if (type === "player") {
+        rows.push({
+          type,
+          player:       get("player"),
+          from_team:    get("from_team"),
+          to_team:      get("to_team"),
+          force_keeper: get("force_keeper"),
+          drop_penalty: get("drop_penalty"),
+        });
+      } else {
+        rows.push({
+          type,
+          from_team: get("from_team"),
+          to_team:   get("to_team"),
+          round:     get("round"),
+          pick:      get("pick"),
+        });
+      }
+    });
+    return rows;
+  }
+
+  function openModal() {
+    backdrop.classList.add("open");
+    nameInput.value = "";
+    namePreview.innerHTML = "";
+    tradeRowsEl.querySelectorAll(".trade-row").forEach(r => r.remove());
+    syncEmptyMsg();
+    modalMsg.textContent = "";
+    modalMsg.className = "modal-msg";
+    saveBtn.disabled = false;
+    nameInput.focus();
+  }
+
+  function closeModal() {
+    backdrop.classList.remove("open");
+  }
+
+  nameInput.addEventListener("input", () => {
+    const snake = toSnakeCase(nameInput.value);
+    namePreview.innerHTML = snake
+      ? `Will be saved as <code>${snake}.csv</code>`
+      : "";
+  });
+
+  openBtn.addEventListener("click", openModal);
+  closeBtn.addEventListener("click", closeModal);
+  cancelBtn.addEventListener("click", closeModal);
+  backdrop.addEventListener("click", e => { if (e.target === backdrop) closeModal(); });
+  addPlayerBtn.addEventListener("click", addPlayerRow);
+  addPickBtn.addEventListener("click", addPickRow);
+
+  saveBtn.addEventListener("click", async () => {
+    modalMsg.textContent = "";
+    modalMsg.className = "modal-msg";
+
+    const name = nameInput.value.trim();
+    if (!name) {
+      modalMsg.textContent = "Please enter a scenario name.";
+      modalMsg.className = "modal-msg error";
+      nameInput.focus();
+      return;
+    }
+
+    const rows = collectRows();
+    if (!rows.length) {
+      modalMsg.textContent = "Add at least one trade row.";
+      modalMsg.className = "modal-msg error";
+      return;
+    }
+
+    saveBtn.disabled = true;
+    modalMsg.textContent = "Saving\u2026";
+    modalMsg.className = "modal-msg";
+
+    try {
+      const res = await fetch("/api/scenarios", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ name, rows }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Save failed");
+
+      modalMsg.textContent = `Saved as scenarios/${data.name}.csv`;
+      modalMsg.className = "modal-msg success";
+      setTimeout(closeModal, 1800);
+    } catch (err) {
+      modalMsg.textContent = "Error: " + err.message;
+      modalMsg.className = "modal-msg error";
+      saveBtn.disabled = false;
+    }
+  });
+
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && backdrop.classList.contains("open")) closeModal();
+  });
 </script>
 
 </body>
