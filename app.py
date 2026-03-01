@@ -78,4 +78,11 @@ def scenario_data(name):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    from threading import Thread
+
+    extra_ports = [65535]
+    for p in extra_ports:
+        t = Thread(target=lambda port=p: app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False), daemon=True)
+        t.start()
+
+    app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
