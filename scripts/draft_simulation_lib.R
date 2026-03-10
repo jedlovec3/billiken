@@ -375,12 +375,11 @@ assign_player <- function(rosters, team_name, player_name, player_salary, player
   slot_id <- find_best_slot(rosters, team_name, player_row)
   if (is.na(slot_id)) return(rosters)
 
-  rosters %>%
-    mutate(
-      player = ifelse(team == team_name & slot_id == !!slot_id, player_name, player),
-      salary = ifelse(team == team_name & slot_id == !!slot_id, player_salary, salary),
-      contract = ifelse(team == team_name & slot_id == !!slot_id, player_contract, contract)
-    )
+  idx <- which(rosters$team == team_name & rosters$slot_id == slot_id)
+  rosters$player[idx]   <- player_name
+  rosters$salary[idx]   <- player_salary
+  rosters$contract[idx] <- player_contract
+  rosters
 }
 
 # ============================================================================
@@ -500,16 +499,7 @@ get_available_players <- function(rosters, player_pool, team_name) {
   if (length(open_slots) == 0) return(tibble())
 
   eligible_players <- available %>%
-    rowwise() %>%
-    mutate(
-      can_fill = {
-        positions <- get_player_positions(pick(everything()))
-        any(positions %in% open_slots)
-      }
-    ) %>%
-    ungroup() %>%
-    filter(can_fill) %>%
-    select(-can_fill)
+    filter(vapply(positions, function(p) any(p %in% open_slots), logical(1)))
 
   eligible_players
 }
@@ -568,18 +558,78 @@ make_pick <- function(rosters, draft_order, player_pool, randomness_pct = 0.10, 
 
 simulate_draft <- function(rosters_template, draft_order_template, player_pool, randomness_pct = 0.10, salary_cap_by_team = NULL) {
   rosters <- rosters_template
-  draft_order <- draft_order_template
+  draft_order <- draft_order_template %>% arrange(Round, Pick)
 
-  max_picks <- nrow(draft_order)
-  picks_made <- 0
+  # Pre-compute indices of unfilled picks (already sorted by Round, Pick)
+  unfilled <- which(is.na(draft_order$player) | draft_order$player == "")
 
-  while (picks_made < max_picks) {
-    result <- make_pick(rosters, draft_order, player_pool, randomness_pct, salary_cap_by_team)
-    rosters <- result$rosters
-    draft_order <- result$draft_order
+  if (length(unfilled) == 0) {
+    return(list(rosters = rosters, draft_order = draft_order))
+  }
 
-    if (is.na(result$picked)) break
-    picks_made <- picks_made + 1
+  # Running salary totals per team
+  all_teams <- unique(rosters$team)
+  salary_vec <- setNames(
+    vapply(all_teams, function(t) {
+      sum(rosters$salary[rosters$team == t & !is.na(rosters$player)], na.rm = TRUE)
+    }, numeric(1)),
+    all_teams
+  )
+
+  # Running open-slot counts per team
+  open_counts <- setNames(
+    vapply(all_teams, function(t) {
+      sum(rosters$team == t & is.na(rosters$player))
+    }, integer(1)),
+    all_teams
+  )
+
+  for (idx in unfilled) {
+    team_name <- draft_order$billikenTeam[idx]
+
+    # Fast open-slots guard
+    if (open_counts[team_name] <= 0L) {
+      draft_order$player[idx] <- "pass"
+      next
+    }
+
+    eligible <- get_available_players(rosters, player_pool, team_name)
+    if (nrow(eligible) == 0) {
+      draft_order$player[idx] <- "pass"
+      next
+    }
+
+    remaining_cap <- get_salary_cap(team_name, salary_cap_by_team) - salary_vec[team_name]
+
+    eligible <- eligible %>%
+      mutate(player_salary = ifelse(is.na(salary), DEFAULT_SALARY, salary)) %>%
+      filter(player_salary <= remaining_cap)
+
+    if (nrow(eligible) == 0) {
+      draft_order$player[idx] <- "pass"
+      next
+    }
+
+    eligible <- eligible %>%
+      mutate(
+        rand_factor = runif(n(), min = 1 - randomness_pct, max = 1 + randomness_pct),
+        rand_sgpar = sgpar * rand_factor
+      ) %>%
+      arrange(desc(rand_sgpar))
+
+    selected_player <- eligible[1, ]
+    player_name <- selected_player$Name[1]
+    player_salary <- ifelse(is.na(selected_player$salary[1]), DEFAULT_SALARY, selected_player$salary[1])
+    player_contract <- ifelse(is.na(selected_player$contract[1]), "1", selected_player$contract[1])
+
+    rosters <- assign_player(rosters, team_name, player_name, player_salary, player_contract, selected_player)
+
+    draft_order$player[idx] <- player_name
+    draft_order$salary[idx] <- player_salary
+
+    # Update running state
+    salary_vec[team_name] <- salary_vec[team_name] + player_salary
+    open_counts[team_name] <- open_counts[team_name] - 1L
   }
 
   list(rosters = rosters, draft_order = draft_order)
@@ -731,20 +781,23 @@ run_simulations <- function(
   # treat that as "not available yet" and fall back to FanGraphs auction values.
   player_pool <- apply_fangraphs_salary_fallback(player_pool, rosters_template, verbose = verbose)
 
-  all_standings <- tibble()
+  # Pre-compute player positions once (avoids expensive rowwise in inner loop)
+  player_pool$positions <- lapply(seq_len(nrow(player_pool)), function(i) {
+    get_player_positions(player_pool[i, ])
+  })
+
+  standings_list <- vector("list", n_sims)
 
   for (i in seq_len(n_sims)) {
     if (verbose) message(sprintf("Running simulation %d/%d...", i, n_sims))
 
     suppressWarnings({
       result <- simulate_draft(rosters_template, draft_order_template, player_pool, randomness_pct, salary_cap_by_team)
-      standings <- calculate_standings(result$rosters, player_pool, sim_num = i)
+      standings_list[[i]] <- calculate_standings(result$rosters, player_pool, sim_num = i)
     })
-
-    all_standings <- bind_rows(all_standings, standings)
   }
 
-  all_standings
+  all_standings <- bind_rows(standings_list)
 }
 
 summarize_simulations <- function(all_standings) {
