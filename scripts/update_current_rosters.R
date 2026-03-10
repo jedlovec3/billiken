@@ -66,6 +66,7 @@ keepers <- keepers_raw %>%
   filter(!is.na(Player) & Player != "NA") %>%
   select(Player, Contract, Salary, billikenTeam) %>%
   mutate(
+    Player       = as.character(Player),
     billikenTeam = toupper(billikenTeam),
     Contract     = as.character(Contract),
     Salary       = as.numeric(Salary),
@@ -96,6 +97,7 @@ if (length(teams_with_keepers) > 0) {
 draft_picks <- draft %>%
   filter(!is.na(Player) & Player != "NA") %>%
   mutate(
+    Player       = as.character(Player),
     billikenTeam = toupper(Team),
     Salary       = as.numeric(Salary),
     Contract     = NA_character_,

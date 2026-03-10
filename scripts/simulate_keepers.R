@@ -13,6 +13,8 @@ simulate_keepers <- function(
   prefreeze_rosters_path = "data/raw/prefreeze_rosters_latest.csv",
   projected_player_value_path = "data/processed/projected_player_value.csv",
   trades_path = NULL,
+  keepers_path = NULL,
+  salaries_path = NULL,
   output_dir = "data/processed",
   seed = NULL
 ) {
@@ -21,6 +23,7 @@ simulate_keepers <- function(
   suppressPackageStartupMessages({
     library(tidyverse)
     library(stringi)
+    library(fuzzyjoin)
   })
 
   # Optional helpers (for robust paths + trade overlay)
@@ -148,31 +151,157 @@ simulate_keepers <- function(
       key_strip = normalize_name(strip_suffixes(player))
     )
 
-  # Pass 1: exact-ish name match (keep suffixes)
+  roster_cols <- c("billikenTeam", "slot", "contract", "salary")
+
+  # Pass 1: exact normalized name match (keep suffixes)
   pass1 <- proj_keyed %>%
     left_join(
-      rosters_keyed %>% select(key_keep, billikenTeam, slot, contract, salary),
+      rosters_keyed %>% select(key_keep, all_of(roster_cols)),
       by = join_by(key_keep),
       relationship = "many-to-many"
     ) %>%
     resolve_roster_matches()
 
-  # Pass 2: for any unmatched players, try stripping suffixes (Jr/Sr/etc)
-  unmatched <- pass1 %>% filter(is.na(billikenTeam))
-  matched <- pass1 %>% filter(!is.na(billikenTeam))
+  matched1   <- pass1 %>% filter(!is.na(billikenTeam))
+  unmatched1 <- pass1 %>% filter(is.na(billikenTeam))
 
-  pass2 <- unmatched %>%
-    select(-billikenTeam, -slot, -contract, -salary) %>%
+  # Pass 2: suffix-stripped name match (Jr/Sr/etc)
+  pass2 <- unmatched1 %>%
+    select(-all_of(roster_cols)) %>%
     left_join(
-      rosters_keyed %>% select(key_strip, billikenTeam, slot, contract, salary),
+      rosters_keyed %>% select(key_strip, all_of(roster_cols)),
       by = join_by(key_strip),
       relationship = "many-to-many"
     ) %>%
     resolve_roster_matches()
 
-  projections_prefreeze <- bind_rows(matched, pass2) %>%
+  matched2   <- pass2 %>% filter(!is.na(billikenTeam))
+  unmatched2 <- pass2 %>% filter(is.na(billikenTeam))
+
+  # Pass 3: fuzzy match on normalized name for any still-unmatched players
+  if (nrow(unmatched2) > 0) {
+    message(sprintf("Fuzzy matching %d remaining unmatched players...", nrow(unmatched2)))
+    pass3 <- unmatched2 %>%
+      select(-all_of(roster_cols)) %>%
+      stringdist_left_join(
+        rosters_keyed %>% select(key_keep, all_of(roster_cols)),
+        by = c("key_keep" = "key_keep"),
+        max_dist = 2,
+        distance_col = "dist"
+      ) %>%
+      group_by(row_id) %>%
+      slice_min(dist, n = 1, with_ties = FALSE) %>%
+      ungroup() %>%
+      select(-dist) %>%
+      rename(key_keep = key_keep.x) %>%
+      select(-key_keep.y)
+
+    fuzzy_hits <- pass3 %>% filter(!is.na(billikenTeam))
+    if (nrow(fuzzy_hits) > 0) {
+      message(sprintf("  Fuzzy matched %d player(s):", nrow(fuzzy_hits)))
+      walk2(fuzzy_hits$Name, fuzzy_hits$billikenTeam,
+            ~message(sprintf("    %s -> %s", .x, .y)))
+    }
+  } else {
+    pass3 <- unmatched2
+  }
+
+  projections_prefreeze <- bind_rows(matched1, matched2, pass3) %>%
     arrange(row_id) %>%
     select(-row_id, -key_keep, -key_strip)
+
+  # -----------------
+  # Override contract/salary from keepers & salaries when keepers are available
+  # -----------------
+  if (!is.null(keepers_path)) {
+    keepers_file <- resolve_path(keepers_path)
+    if (file.exists(keepers_file)) {
+      keepers_csv <- readr::read_csv(keepers_file, show_col_types = FALSE)
+      keepers_data <- keepers_csv %>%
+        filter(!is.na(Player) & Player != "NA") %>%
+        transmute(
+          key_keep  = normalize_name(Player),
+          key_strip = normalize_name(strip_suffixes(Player)),
+          keeper_contract = as.character(Contract),
+          keeper_salary   = as.numeric(Salary)
+        )
+
+      if (nrow(keepers_data) > 0) {
+        message("Overriding contract/salary from keepers.csv (with salaries fallback)...")
+
+        # Build salaries lookup for non-keeper fallback
+        sal_lookup <- tibble(key_keep = character(), key_strip = character(),
+                             sal_salary = numeric())
+        if (!is.null(salaries_path)) {
+          sal_file <- resolve_path(salaries_path)
+          if (file.exists(sal_file)) {
+            sal_lookup <- readr::read_csv(sal_file, show_col_types = FALSE) %>%
+              filter(!is.na(Player)) %>%
+              transmute(
+                key_keep  = normalize_name(Player),
+                key_strip = normalize_name(strip_suffixes(Player)),
+                sal_salary = as.numeric(Salary)
+              )
+          }
+        }
+
+        projections_prefreeze <- projections_prefreeze %>%
+          mutate(
+            .key_keep  = normalize_name(Name),
+            .key_strip = normalize_name(strip_suffixes(Name))
+          )
+
+        # Keeper match: exact name first, then suffix-stripped
+        projections_prefreeze <- projections_prefreeze %>%
+          left_join(
+            keepers_data %>% distinct(key_keep, .keep_all = TRUE) %>%
+              select(key_keep, .kc_e = keeper_contract, .ks_e = keeper_salary),
+            by = c(".key_keep" = "key_keep")
+          ) %>%
+          left_join(
+            keepers_data %>% distinct(key_strip, .keep_all = TRUE) %>%
+              select(key_strip, .kc_s = keeper_contract, .ks_s = keeper_salary),
+            by = c(".key_strip" = "key_strip")
+          ) %>%
+          mutate(
+            .kc = coalesce(.kc_e, .kc_s),
+            .ks = coalesce(.ks_e, .ks_s)
+          ) %>%
+          select(-.kc_e, -.ks_e, -.kc_s, -.ks_s)
+
+        # Salaries match: exact name first, then suffix-stripped
+        projections_prefreeze <- projections_prefreeze %>%
+          left_join(
+            sal_lookup %>% distinct(key_keep, .keep_all = TRUE) %>%
+              select(key_keep, .ss_e = sal_salary),
+            by = c(".key_keep" = "key_keep")
+          ) %>%
+          left_join(
+            sal_lookup %>% distinct(key_strip, .keep_all = TRUE) %>%
+              select(key_strip, .ss_s = sal_salary),
+            by = c(".key_strip" = "key_strip")
+          ) %>%
+          mutate(.ss = coalesce(.ss_e, .ss_s)) %>%
+          select(-.ss_e, -.ss_s)
+
+        # Apply: keeper > salaries > default ($1 / contract "1")
+        projections_prefreeze <- projections_prefreeze %>%
+          mutate(
+            contract = case_when(
+              !is.na(.kc) ~ .kc,
+              !is.na(.ss) ~ "1",
+              TRUE         ~ "1"
+            ),
+            salary = case_when(
+              !is.na(.ks) ~ .ks,
+              !is.na(.ss) ~ .ss,
+              TRUE         ~ 1
+            )
+          ) %>%
+          select(-.key_keep, -.key_strip, -.kc, -.ks, -.ss)
+      }
+    }
+  }
 
   # -----------------
   # Export projections_prefreeze.csv

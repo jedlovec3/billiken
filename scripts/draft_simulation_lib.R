@@ -412,6 +412,28 @@ fill_simulated_keepers <- function(rosters, simulated_keepers, player_pool, forc
   rosters
 }
 
+apply_forced_picks <- function(draft_order, forced_picks) {
+  if (is.null(forced_picks) || nrow(forced_picks) == 0) return(draft_order)
+
+  for (i in seq_len(nrow(forced_picks))) {
+    r <- forced_picks$Round[i]
+    p <- forced_picks$Pick[i]
+    player_name <- forced_picks$player[i]
+    player_salary <- forced_picks$salary[i]
+
+    idx <- which(draft_order$Round == r & draft_order$Pick == p)
+    if (length(idx) == 0) {
+      warning(sprintf("Forced pick: no slot found for round=%d pick=%d; skipping.", r, p))
+      next
+    }
+
+    draft_order$player[idx[1]] <- player_name
+    draft_order$salary[idx[1]] <- player_salary
+  }
+
+  draft_order
+}
+
 fill_existing_draft_picks <- function(rosters, draft_order, player_pool) {
   picked <- draft_order %>%
     filter(!is.na(player) & player != "" & player != "pass")
@@ -653,7 +675,8 @@ run_simulations <- function(
   keepers_path = "data/raw/keepers.csv",
   simulated_keepers_path = "data/processed/simulated_keepers.csv",
   use_default_keepers = TRUE,
-  force_simulated_keepers = FALSE
+  force_simulated_keepers = FALSE,
+  forced_picks = NULL
 ) {
   if (!is.null(seed)) set.seed(seed)
 
@@ -684,6 +707,24 @@ run_simulations <- function(
       player_pool,
       force = force_simulated_keepers
     )
+  }
+
+  # Apply forced picks AFTER keepers are loaded so they don't trip the
+  # filled_count > 0 guard in fill_simulated_keepers.
+  if (!is.null(forced_picks) && nrow(forced_picks) > 0) {
+    draft_order_template <- apply_forced_picks(draft_order_template, forced_picks)
+    for (i in seq_len(nrow(forced_picks))) {
+      fp_round <- forced_picks$Round[i]
+      fp_pick  <- forced_picks$Pick[i]
+      fp_name  <- forced_picks$player[i]
+      fp_sal   <- forced_picks$salary[i]
+      idx <- which(draft_order_template$Round == fp_round & draft_order_template$Pick == fp_pick)
+      if (length(idx) == 0) next
+      fp_team <- draft_order_template$billikenTeam[idx[1]]
+      fp_row  <- player_pool %>% filter(Name == fp_name)
+      if (nrow(fp_row) == 0) next
+      rosters_template <- assign_player(rosters_template, fp_team, fp_name, fp_sal, "1", fp_row)
+    }
   }
 
   # If the salaries sheet doesn't have any usable salaries for draft-eligible players,
