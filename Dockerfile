@@ -1,4 +1,4 @@
-FROM node:20-bullseye
+FROM oven/bun:latest
 
 # Install R and system dependencies
 RUN apt-get update && apt-get install -y \
@@ -12,10 +12,10 @@ RUN R --slave -e "install.packages(c('tidyverse', 'jsonlite', 'data.table', 'htt
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN bun install
 
 COPY . .
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["bun", "server.js"]
