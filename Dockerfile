@@ -1,14 +1,15 @@
-FROM oven/bun:latest
+FROM rocker/r-base:latest
 
-# Install R and minimal dependencies
+# Install Node/Bun
 RUN apt-get update && apt-get install -y \
-    r-base \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install R packages with timeout and simpler approach
-RUN timeout 600 R --slave -e "install.packages('jsonlite', repos='http://cran.r-project.org')" || true
-RUN timeout 600 R --slave -e "install.packages('data.table', repos='http://cran.r-project.org')" || true
-RUN timeout 600 R --slave -e "install.packages('httr', repos='http://cran.r-project.org')" || true
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:$PATH"
+
+# Install R packages
+RUN R --slave -e "install.packages(c('jsonlite', 'data.table', 'httr'), repos='http://cran.r-project.org')"
 
 WORKDIR /app
 
