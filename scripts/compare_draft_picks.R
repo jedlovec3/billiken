@@ -17,6 +17,7 @@
 #   --randomness  Randomness percentage for other teams' picks (default: 0.10)
 #   --seed        Random seed for reproducibility (default: 42)
 #   --verbose     Print simulation progress (default: false)
+#   --output      Path to write the comparison CSV (default: auto-generated under data/compare_picks/)
 
 suppressPackageStartupMessages({
   library(tidyverse)
@@ -74,6 +75,7 @@ verbose      <- to_bool(get_arg(kv, "verbose", "false"), default = FALSE)
 projected_player_value_path <- get_arg(kv, "projected_player_value", "data/processed/projected_player_value.csv")
 salaries_path <- get_arg(kv, "salaries", "data/raw/salaries_latest.csv")
 draft_path    <- get_arg(kv, "draft", "data/raw/draft_latest.csv")
+output_path   <- get_arg(kv, "output", NULL)
 
 # --------------------------------------------------------------------------
 # Detect next open pick for the team
@@ -241,5 +243,18 @@ for (i in seq_len(nrow(comparison))) {
               row$win_pct, row$top3_pct, row$avg_hit_pts, row$avg_pit_pts))
 }
 
-cat("\n")
+# --------------------------------------------------------------------------
+# Write comparison CSV
+# --------------------------------------------------------------------------
+
+if (is.null(output_path)) {
+  out_dir <- "data/compare_picks"
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  ts <- format(Sys.time(), "%Y%m%d_%H%M%S")
+  output_path <- file.path(out_dir, sprintf("%s_round%d_pick%d_%s.csv", tolower(team_name), target_round, target_pick, ts))
+}
+
+readr::write_csv(comparison, output_path)
+message(sprintf("\nComparison written to %s", output_path))
+
 message("Done!")
