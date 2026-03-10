@@ -18,4 +18,4 @@ COPY . .
 
 EXPOSE 3000
 
-CMD ["bun", "server.js"]
+CMD ["bun", "run", "server.js"]
