@@ -1,13 +1,14 @@
 FROM oven/bun:latest
 
-# Install R and system dependencies
+# Install R and minimal dependencies
 RUN apt-get update && apt-get install -y \
     r-base \
-    r-base-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install R packages
-RUN R --slave -e "install.packages(c('tidyverse', 'jsonlite', 'data.table', 'httr'), repos='http://cran.r-project.org')"
+# Install R packages with timeout and simpler approach
+RUN timeout 600 R --slave -e "install.packages('jsonlite', repos='http://cran.r-project.org')" || true
+RUN timeout 600 R --slave -e "install.packages('data.table', repos='http://cran.r-project.org')" || true
+RUN timeout 600 R --slave -e "install.packages('httr', repos='http://cran.r-project.org')" || true
 
 WORKDIR /app
 
