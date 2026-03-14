@@ -7,6 +7,8 @@ import { readdirSync, statSync } from "fs";
 const app = new Hono();
 const PORT = process.env.PORT || 3000;
 
+let packagesReady = false;
+
 // Ensure required directories exist
 async function ensureDirectories() {
   const dirs = ["data", "output"];
@@ -28,6 +30,7 @@ function runRScript(scriptPath, args = []) {
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
         cwd: process.cwd(),
+        timeout: 600000, // 10 minutes
       });
       resolve(output);
     } catch (error) {
@@ -53,23 +56,28 @@ function getLatestFile(dirPath) {
   }
 }
 
-// Initialize: ensure directories and install R packages
-async function initialize() {
-  console.log("Initializing Billiken API...");
-  await ensureDirectories();
-  
+// Install R packages asynchronously (non-blocking)
+async function installPackagesAsync() {
   try {
-    console.log("Installing R packages...");
+    console.log("Installing R packages in background...");
     await runRScript("scripts/install_packages.R");
-    console.log("R packages ready!");
+    packagesReady = true;
+    console.log("R packages installed successfully!");
   } catch (error) {
-    console.error("Warning: R package installation had issues:", error.message);
-    console.log("Continuing anyway - packages may already be installed.");
+    console.error("R package installation error:", error.message);
+    packagesReady = true; // Mark ready anyway - packages might already exist
   }
 }
 
 // POST /run_simulation
 app.post("/run_simulation", async (c) => {
+  if (!packagesReady) {
+    return c.json(
+      { error: "R packages still installing, please retry in a moment" },
+      { status: 503 }
+    );
+  }
+
   try {
     await ensureDirectories();
 
@@ -178,15 +186,19 @@ app.get("/pick_comparisons", async (c) => {
 
 // Health check
 app.get("/health", (c) => {
-  return c.json({ status: "ok" });
+  return c.json({ status: "ok", packagesReady });
 });
 
-// Start server
-await initialize();
+// Initialize directories
+await ensureDirectories();
 
+// Start server immediately (non-blocking)
 Bun.serve({
   port: PORT,
   fetch: app.fetch,
 });
 
 console.log(`Billiken API server running on port ${PORT}`);
+
+// Install packages in background (non-blocking)
+installPackagesAsync();
