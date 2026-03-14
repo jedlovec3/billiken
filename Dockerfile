@@ -19,9 +19,6 @@ RUN bun install
 
 COPY . .
 
-# Install R packages
-RUN Rscript -e "install.packages(c('tidyverse', 'jsonlite', 'data.table', 'httr'), repos='http://cran.r-project.org', dependencies=TRUE)"
-
 EXPOSE 3000
 
 CMD ["bun", "run", "server.js"]
