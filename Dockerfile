@@ -15,6 +15,9 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libtiff5-dev \
     pkg-config \
+    libicu-dev \
+    libx11-dev \
+    pandoc \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
