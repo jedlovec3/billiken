@@ -1,106 +1,192 @@
-import { Hono } from 'hono';
-import { execSync } from 'child_process';
-import fs from 'fs';
-import path from 'path';
+import { Hono } from "hono";
+import { execSync } from "child_process";
+import { promises as fs } from "fs";
+import { join } from "path";
+import { readdirSync, statSync } from "fs";
 
 const app = new Hono();
 const PORT = process.env.PORT || 3000;
 
 // Ensure required directories exist
-const dataDir = './data';
-const outputDir = './output';
-[dataDir, outputDir].forEach(dir => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+async function ensureDirectories() {
+  const dirs = ["data", "output"];
+  for (const dir of dirs) {
+    try {
+      await fs.mkdir(dir, { recursive: true });
+    } catch (e) {
+      // Directory may already exist
+    }
   }
-});
+}
 
-// Health check
-app.get('/health', (c) => {
-  return c.json({ status: 'ok' });
-});
+// Run R script with args
+function runRScript(scriptPath, args = []) {
+  return new Promise((resolve, reject) => {
+    try {
+      const cmd = ["Rscript", scriptPath, ...args].join(" ");
+      const output = execSync(cmd, {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+        cwd: process.cwd(),
+      });
+      resolve(output);
+    } catch (error) {
+      reject(new Error(`R script failed: ${error.message}`));
+    }
+  });
+}
+
+// Find latest file in directory
+function getLatestFile(dirPath) {
+  try {
+    const files = readdirSync(dirPath)
+      .map((f) => ({
+        name: f,
+        path: join(dirPath, f),
+        time: statSync(join(dirPath, f)).mtimeMs,
+      }))
+      .sort((a, b) => b.time - a.time);
+
+    return files.length > 0 ? files[0].path : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Initialize: ensure directories and install R packages
+async function initialize() {
+  console.log("Initializing Billiken API...");
+  await ensureDirectories();
+  
+  try {
+    console.log("Installing R packages...");
+    await runRScript("scripts/install_packages.R");
+    console.log("R packages ready!");
+  } catch (error) {
+    console.error("Warning: R package installation had issues:", error.message);
+    console.log("Continuing anyway - packages may already be installed.");
+  }
+}
 
 // POST /run_simulation
-app.post('/run_simulation', async (c) => {
+app.post("/run_simulation", async (c) => {
   try {
+    await ensureDirectories();
+
     const body = await c.req.json();
-    
+
     // Save draft state
-    const draftStatePath = path.join(dataDir, 'draft_state.json');
-    fs.writeFileSync(draftStatePath, JSON.stringify(body, null, 2));
-    
-    // Execute R scripts
-    try {
-      execSync('Rscript scripts/prefreeze_update.R', { stdio: 'inherit' });
-      execSync('Rscript scripts/compare_draft_picks.R --n_sims=200', { stdio: 'inherit' });
-    } catch (error) {
-      return c.json({ 
-        status: 'error', 
-        message: `R script execution failed: ${error.message}` 
-      }, 500);
+    const draftStatePath = join("data", "draft_state.json");
+    await fs.writeFile(draftStatePath, JSON.stringify(body, null, 2));
+
+    console.log("Running prefreeze_update.R...");
+    await runRScript("scripts/prefreeze_update.R");
+
+    console.log("Running compare_draft_picks.R...");
+    const compareArgs = ["--n_sims=200"];
+
+    if (body.players && Array.isArray(body.players)) {
+      compareArgs.push(`--players="${body.players.join(",")}"`);
     }
-    
-    return c.json({ status: 'complete' });
+    if (body.team) {
+      compareArgs.push(`--team="${body.team}"`);
+    }
+    if (body.round) {
+      compareArgs.push(`--round=${body.round}`);
+    }
+    if (body.pick) {
+      compareArgs.push(`--pick=${body.pick}`);
+    }
+
+    await runRScript("scripts/compare_draft_picks.R", compareArgs);
+
+    return c.json({ status: "complete" });
   } catch (error) {
-    return c.json({ 
-      status: 'error', 
-      message: error.message 
-    }, 400);
+    console.error("Simulation error:", error);
+    return c.json(
+      { error: error.message, status: "failed" },
+      { status: 500 }
+    );
   }
 });
 
 // GET /projections
-app.get('/projections', (c) => {
+app.get("/projections", async (c) => {
   try {
-    const filePath = path.join(process.cwd(), 'projections_prefreeze.csv');
-    if (!fs.existsSync(filePath)) {
-      return c.json({ error: 'File not found' }, 404);
-    }
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return c.text(content, 200, { 'Content-Type': 'text/csv' });
+    const filePath = join("data", "processed", "projections_prefreeze.csv");
+    const content = await fs.readFile(filePath, "utf-8");
+
+    c.header("Content-Type", "text/csv");
+    c.header(
+      "Content-Disposition",
+      "attachment; filename=projections_prefreeze.csv"
+    );
+    return c.text(content);
   } catch (error) {
-    return c.json({ error: error.message }, 500);
+    console.error("Projections error:", error);
+    return c.json(
+      { error: "Projections file not found" },
+      { status: 404 }
+    );
   }
 });
 
 // GET /draft_results
-app.get('/draft_results', (c) => {
+app.get("/draft_results", async (c) => {
   try {
-    const filePath = path.join(process.cwd(), 'draft_latest.csv');
-    if (!fs.existsSync(filePath)) {
-      return c.json({ error: 'File not found' }, 404);
-    }
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return c.text(content, 200, { 'Content-Type': 'text/csv' });
+    const filePath = join("data", "raw", "draft_latest.csv");
+    const content = await fs.readFile(filePath, "utf-8");
+
+    c.header("Content-Type", "text/csv");
+    c.header("Content-Disposition", "attachment; filename=draft_latest.csv");
+    return c.text(content);
   } catch (error) {
-    return c.json({ error: error.message }, 500);
+    console.error("Draft results error:", error);
+    return c.json(
+      { error: "Draft results file not found" },
+      { status: 404 }
+    );
   }
 });
 
 // GET /pick_comparisons
-app.get('/pick_comparisons', (c) => {
+app.get("/pick_comparisons", async (c) => {
   try {
-    const files = fs.readdirSync(outputDir)
-      .filter(f => f.endsWith('.csv'))
-      .sort()
-      .reverse();
-    
-    if (files.length === 0) {
-      return c.json({ error: 'No comparison files found' }, 404);
+    const latestFile = getLatestFile("output");
+
+    if (!latestFile) {
+      return c.json(
+        { error: "No comparison files found" },
+        { status: 404 }
+      );
     }
-    
-    const latestFile = files[0];
-    const filePath = path.join(outputDir, latestFile);
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return c.text(content, 200, { 'Content-Type': 'text/csv' });
+
+    const content = await fs.readFile(latestFile, "utf-8");
+    const fileName = latestFile.split("/").pop();
+
+    c.header("Content-Type", "text/csv");
+    c.header("Content-Disposition", `attachment; filename=${fileName}`);
+    return c.text(content);
   } catch (error) {
-    return c.json({ error: error.message }, 500);
+    console.error("Pick comparisons error:", error);
+    return c.json(
+      { error: error.message },
+      { status: 500 }
+    );
   }
 });
+
+// Health check
+app.get("/health", (c) => {
+  return c.json({ status: "ok" });
+});
+
+// Start server
+await initialize();
 
 Bun.serve({
   port: PORT,
   fetch: app.fetch,
 });
 
-console.log(`Server running on port ${PORT}`);
+console.log(`Billiken API server running on port ${PORT}`);
