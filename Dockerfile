@@ -31,4 +31,4 @@ RUN R -e "if (file.exists('renv.lock')) renv::restore()"
 
 EXPOSE 3000
 
-CMD ["bun", "run", "server.js"]
+CMD ["bun", "server.js"]
