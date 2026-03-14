@@ -1,5 +1,14 @@
 # scripts/prefreeze_update.R
 
+# Install packages if missing
+packages <- c('tidyverse', 'stringi')
+for (pkg in packages) {
+  if (!require(pkg, character.only = TRUE)) {
+    message(sprintf("Installing %s...", pkg))
+    install.packages(pkg, repos = 'http://cran.r-project.org', dependencies = TRUE)
+  }
+}
+
 # prefreeze_update.R
 # Run the data and player value updates for pre-freeze rosters. 
 #
