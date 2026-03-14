@@ -1,5 +1,8 @@
 {
   "build": {
-    "builder": "nixpacks"
+    "builder": "railpack",
+    "nixpacks": {
+      "providers": ["node"]
+    }
   }
 }
