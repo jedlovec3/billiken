@@ -56,19 +56,6 @@ function getLatestFile(dirPath) {
   }
 }
 
-// Install R packages asynchronously (non-blocking)
-async function installPackagesAsync() {
-  try {
-    console.log("Installing R packages in background...");
-    await runRScript("scripts/install_packages.R");
-    packagesReady = true;
-    console.log("R packages installed successfully!");
-  } catch (error) {
-    console.error("R package installation error:", error.message);
-    packagesReady = true; // Mark ready anyway - packages might already exist
-  }
-}
-
 // POST /run_simulation
 app.post("/run_simulation", async (c) => {
   if (!packagesReady) {
