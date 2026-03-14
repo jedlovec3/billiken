@@ -1,7 +1,7 @@
 # scripts/prefreeze_update.R
 
 # Install packages if missing
-packages <- c('tidyverse', 'stringi')
+packages <- c('tidyverse', 'stringi', 'httr', 'data.table', 'jsonlite')
 for (pkg in packages) {
   if (!require(pkg, character.only = TRUE)) {
     message(sprintf("Installing %s...", pkg))
