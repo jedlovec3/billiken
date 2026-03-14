@@ -7,7 +7,7 @@ import { readdirSync, statSync } from "fs";
 const app = new Hono();
 const PORT = process.env.PORT || 3000;
 
-let packagesReady = false;
+let packagesReady = true;
 
 // Ensure required directories exist
 async function ensureDirectories() {
@@ -187,5 +187,3 @@ Bun.serve({
 
 console.log(`Billiken API server running on port ${PORT}`);
 
-// Install packages in background (non-blocking)
-installPackagesAsync();
