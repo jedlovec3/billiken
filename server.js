@@ -34,7 +34,11 @@ function runRScript(scriptPath, args = []) {
       });
       resolve(output);
     } catch (error) {
-      reject(new Error(`R script failed: ${error.message}`));
+      reject(
+        new Error(
+          `R script failed:\n${error.message}\n\nSTDOUT:\n${stdout}\n\nSTDERR:\n${stderr}`
+        )
+      );
     }
   });
 }
