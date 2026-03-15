@@ -26,7 +26,7 @@ function runRScript(scriptPath, args = []) {
   return new Promise((resolve, reject) => {
     execFile("Rscript", [scriptPath, ...args], {
       cwd: process.cwd(),
-      timeout: 600000, // 10 minutes
+      timeout: 1800000, // 30 minutes
       maxBuffer: 10 * 1024 * 1024, // 10 MB
     }, (error, stdout, stderr) => {
       if (error) {
