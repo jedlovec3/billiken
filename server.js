@@ -22,20 +22,31 @@ async function ensureDirectories() {
 }
 
 // Run R script with args
+import { exec } from "child_process";
+
 function runRScript(scriptPath, args = []) {
   return new Promise((resolve, reject) => {
-    try {
-      const cmd = ["Rscript", scriptPath, ...args].join(" ");
-      const output = execSync(cmd, {
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
+    const cmd = `Rscript ${scriptPath} ${args.join(" ")}`;
+
+    exec(
+      cmd,
+      {
         cwd: process.cwd(),
-        timeout: 600000, // 10 minutes
-      });
-      resolve(output);
-    } catch (error) {
-      reject(new Error(`R script failed: ${error.message}`));
-    }
+        timeout: 600000
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(
+            new Error(
+              `R script failed:\n${error.message}\n\nSTDOUT:\n${stdout}\n\nSTDERR:\n${stderr}`
+            )
+          );
+          return;
+        }
+
+        resolve(stdout);
+      }
+    );
   });
 }
 
