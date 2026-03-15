@@ -181,6 +181,18 @@ if (length(valid) == 0) {
 }
 
 # --------------------------------------------------------------------------
+# Prepare simulation context once (data loading + template building)
+# --------------------------------------------------------------------------
+
+message("Preparing simulation context...")
+sim_ctx <- prepare_sim_context(
+  projected_player_value_path = projected_player_value_path,
+  salaries_path = salaries_path,
+  draft_path = draft_path,
+  verbose = verbose
+)
+
+# --------------------------------------------------------------------------
 # Run simulations for each candidate
 # --------------------------------------------------------------------------
 
@@ -201,14 +213,12 @@ for (cand in valid) {
     salary = salary_map[cand]
   )
 
-  all_standings <- run_simulations(
+  all_standings <- run_simulations_from_context(
+    sim_ctx,
     n_sims = n_sims,
     randomness_pct = randomness,
     seed = seed,
     verbose = verbose,
-    projected_player_value_path = projected_player_value_path,
-    salaries_path = salaries_path,
-    draft_path = draft_path,
     forced_picks = forced
   )
 

@@ -558,17 +558,16 @@ make_pick <- function(rosters, draft_order, player_pool, randomness_pct = 0.10, 
 
 simulate_draft <- function(rosters_template, draft_order_template, player_pool, randomness_pct = 0.10, salary_cap_by_team = NULL) {
   rosters <- rosters_template
-  draft_order <- draft_order_template %>% arrange(Round, Pick)
+  draft_order <- draft_order_template[order(draft_order_template$Round, draft_order_template$Pick), ]
 
-  # Pre-compute indices of unfilled picks (already sorted by Round, Pick)
   unfilled <- which(is.na(draft_order$player) | draft_order$player == "")
-
   if (length(unfilled) == 0) {
     return(list(rosters = rosters, draft_order = draft_order))
   }
 
-  # Running salary totals per team
   all_teams <- unique(rosters$team)
+
+  # Running salary totals per team
   salary_vec <- setNames(
     vapply(all_teams, function(t) {
       sum(rosters$salary[rosters$team == t & !is.na(rosters$player)], na.rm = TRUE)
@@ -584,50 +583,68 @@ simulate_draft <- function(rosters_template, draft_order_template, player_pool, 
     all_teams
   )
 
+  # Pre-extract player pool vectors for fast inner loop (avoid dplyr per-pick)
+  pp_names     <- player_pool$Name
+  pp_sgpar     <- player_pool$sgpar
+  pp_sgpar[is.na(pp_sgpar)] <- -Inf
+  pp_salary    <- player_pool$salary
+  pp_salary[is.na(pp_salary)] <- DEFAULT_SALARY
+  pp_positions <- player_pool$positions  # pre-computed list column
+
+  # Track which pool players are already rostered
+  pp_taken <- pp_names %in% rosters$player[!is.na(rosters$player)]
+
   for (idx in unfilled) {
     team_name <- draft_order$billikenTeam[idx]
 
-    # Fast open-slots guard
     if (open_counts[team_name] <= 0L) {
       draft_order$player[idx] <- "pass"
       next
     }
 
-    eligible <- get_available_players(rosters, player_pool, team_name)
-    if (nrow(eligible) == 0) {
+    # Open positions for this team (base R)
+    open_slots <- unique(rosters$pos[rosters$team == team_name & is.na(rosters$player)])
+    if (length(open_slots) == 0L) {
       draft_order$player[idx] <- "pass"
       next
     }
 
+    # Available = not yet rostered in this sim
+    avail_idx <- which(!pp_taken)
+    if (length(avail_idx) == 0L) {
+      draft_order$player[idx] <- "pass"
+      next
+    }
+
+    # Position eligibility
+    pos_ok <- vapply(pp_positions[avail_idx], function(p) any(p %in% open_slots), logical(1))
+    avail_idx <- avail_idx[pos_ok]
+    if (length(avail_idx) == 0L) {
+      draft_order$player[idx] <- "pass"
+      next
+    }
+
+    # Salary cap
     remaining_cap <- get_salary_cap(team_name, salary_cap_by_team) - salary_vec[team_name]
-
-    eligible <- eligible %>%
-      mutate(player_salary = ifelse(is.na(salary), DEFAULT_SALARY, salary)) %>%
-      filter(player_salary <= remaining_cap)
-
-    if (nrow(eligible) == 0) {
+    avail_idx <- avail_idx[pp_salary[avail_idx] <= remaining_cap]
+    if (length(avail_idx) == 0L) {
       draft_order$player[idx] <- "pass"
       next
     }
 
-    eligible <- eligible %>%
-      mutate(
-        rand_factor = runif(n(), min = 1 - randomness_pct, max = 1 + randomness_pct),
-        rand_sgpar = sgpar * rand_factor
-      ) %>%
-      arrange(desc(rand_sgpar))
+    # Pick: randomize sgpar, take the best
+    r_sgpar <- pp_sgpar[avail_idx] * runif(length(avail_idx), 1 - randomness_pct, 1 + randomness_pct)
+    best <- avail_idx[which.max(r_sgpar)]
 
-    selected_player <- eligible[1, ]
-    player_name <- selected_player$Name[1]
-    player_salary <- ifelse(is.na(selected_player$salary[1]), DEFAULT_SALARY, selected_player$salary[1])
-    player_contract <- ifelse(is.na(selected_player$contract[1]), "1", selected_player$contract[1])
+    player_name   <- pp_names[best]
+    player_salary <- pp_salary[best]
 
-    rosters <- assign_player(rosters, team_name, player_name, player_salary, player_contract, selected_player)
+    rosters <- assign_player(rosters, team_name, player_name, player_salary, "1", player_pool[best, , drop = FALSE])
 
     draft_order$player[idx] <- player_name
     draft_order$salary[idx] <- player_salary
 
-    # Update running state
+    pp_taken[best] <- TRUE
     salary_vec[team_name] <- salary_vec[team_name] + player_salary
     open_counts[team_name] <- open_counts[team_name] - 1L
   }
@@ -709,27 +726,19 @@ calculate_standings <- function(rosters, player_pool, sim_num = 1) {
 # PUBLIC ENTRYPOINTS
 # ============================================================================
 
-run_simulations <- function(
-  n_sims = 20,
-  randomness_pct = 0.10,
-  simulated_keepers = NULL,
-  seed = NULL,
-  verbose = TRUE,
+#' Prepare a reusable simulation context (data loading + template building).
+#' Call once, then pass to run_simulations_from_context() for each scenario.
+prepare_sim_context <- function(
   projected_player_value_path = "data/processed/projected_player_value.csv",
   salaries_path = "data/raw/salaries_latest.csv",
   draft_path = "data/raw/draft_latest.csv",
-  salary_cap_by_team = NULL,
-  # Default keeper selection:
-  # 1) If data/raw/keepers.csv has any keepers, use that.
-  # 2) Otherwise use data/processed/simulated_keepers.csv, if present.
+  simulated_keepers = NULL,
   keepers_path = "data/raw/keepers.csv",
   simulated_keepers_path = "data/processed/simulated_keepers.csv",
   use_default_keepers = TRUE,
   force_simulated_keepers = FALSE,
-  forced_picks = NULL
+  verbose = TRUE
 ) {
-  if (!is.null(seed)) set.seed(seed)
-
   if (verbose) message("Loading data...")
   player_pool <- load_draft_pool(projected_player_value_path, salaries_path)
   draft_order_template <- load_draft_order(draft_path)
@@ -759,8 +768,38 @@ run_simulations <- function(
     )
   }
 
-  # Apply forced picks AFTER keepers are loaded so they don't trip the
-  # filled_count > 0 guard in fill_simulated_keepers.
+  player_pool <- apply_fangraphs_salary_fallback(player_pool, rosters_template, verbose = verbose)
+
+  # Pre-compute player positions once (avoids expensive rowwise in inner loop)
+  player_pool$positions <- lapply(seq_len(nrow(player_pool)), function(i) {
+    get_player_positions(player_pool[i, ])
+  })
+
+  list(
+    player_pool = player_pool,
+    draft_order_template = draft_order_template,
+    rosters_template = rosters_template,
+    simulated_keepers = simulated_keepers
+  )
+}
+
+#' Run simulations from a pre-built context (avoids redundant data loading).
+run_simulations_from_context <- function(
+  ctx,
+  n_sims = 20,
+  randomness_pct = 0.10,
+  seed = NULL,
+  verbose = TRUE,
+  salary_cap_by_team = NULL,
+  forced_picks = NULL
+) {
+  if (!is.null(seed)) set.seed(seed)
+
+  player_pool          <- ctx$player_pool
+  draft_order_template <- ctx$draft_order_template
+  rosters_template     <- ctx$rosters_template
+
+  # Apply forced picks to copies
   if (!is.null(forced_picks) && nrow(forced_picks) > 0) {
     draft_order_template <- apply_forced_picks(draft_order_template, forced_picks)
     for (i in seq_len(nrow(forced_picks))) {
@@ -777,27 +816,57 @@ run_simulations <- function(
     }
   }
 
-  # If the salaries sheet doesn't have any usable salaries for draft-eligible players,
-  # treat that as "not available yet" and fall back to FanGraphs auction values.
-  player_pool <- apply_fangraphs_salary_fallback(player_pool, rosters_template, verbose = verbose)
-
-  # Pre-compute player positions once (avoids expensive rowwise in inner loop)
-  player_pool$positions <- lapply(seq_len(nrow(player_pool)), function(i) {
-    get_player_positions(player_pool[i, ])
-  })
-
   standings_list <- vector("list", n_sims)
 
   for (i in seq_len(n_sims)) {
     if (verbose) message(sprintf("Running simulation %d/%d...", i, n_sims))
-
     suppressWarnings({
       result <- simulate_draft(rosters_template, draft_order_template, player_pool, randomness_pct, salary_cap_by_team)
       standings_list[[i]] <- calculate_standings(result$rosters, player_pool, sim_num = i)
     })
   }
 
-  all_standings <- bind_rows(standings_list)
+  bind_rows(standings_list)
+}
+
+#' Backward-compatible wrapper: loads data and runs simulations in one call.
+run_simulations <- function(
+  n_sims = 20,
+  randomness_pct = 0.10,
+  simulated_keepers = NULL,
+  seed = NULL,
+  verbose = TRUE,
+  projected_player_value_path = "data/processed/projected_player_value.csv",
+  salaries_path = "data/raw/salaries_latest.csv",
+  draft_path = "data/raw/draft_latest.csv",
+  salary_cap_by_team = NULL,
+  keepers_path = "data/raw/keepers.csv",
+  simulated_keepers_path = "data/processed/simulated_keepers.csv",
+  use_default_keepers = TRUE,
+  force_simulated_keepers = FALSE,
+  forced_picks = NULL
+) {
+  ctx <- prepare_sim_context(
+    projected_player_value_path = projected_player_value_path,
+    salaries_path = salaries_path,
+    draft_path = draft_path,
+    simulated_keepers = simulated_keepers,
+    keepers_path = keepers_path,
+    simulated_keepers_path = simulated_keepers_path,
+    use_default_keepers = use_default_keepers,
+    force_simulated_keepers = force_simulated_keepers,
+    verbose = verbose
+  )
+
+  run_simulations_from_context(
+    ctx,
+    n_sims = n_sims,
+    randomness_pct = randomness_pct,
+    seed = seed,
+    verbose = verbose,
+    salary_cap_by_team = salary_cap_by_team,
+    forced_picks = forced_picks
+  )
 }
 
 summarize_simulations <- function(all_standings) {

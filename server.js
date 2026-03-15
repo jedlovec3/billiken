@@ -93,7 +93,7 @@ app.post("/run_pick_sim", async (c) => {
   try {
     const body = await c.req.json();
 
-    const compareArgs = ["--n_sims=200"];
+    const compareArgs = ["--n_sims=100"];
 
     if (body.players && Array.isArray(body.players)) {
       compareArgs.push(`--players="${body.players.join(",")}"`);
@@ -150,7 +150,7 @@ app.post("/run_simulation", async (c) => {
     await runRScript("scripts/prefreeze_update.R");
 
     console.log("Running compare_draft_picks.R...");
-    const compareArgs = ["--n_sims=200"];
+    const compareArgs = ["--n_sims=100"];
 
     if (body.players && Array.isArray(body.players)) {
       compareArgs.push(`--players="${body.players.join(",")}"`);
