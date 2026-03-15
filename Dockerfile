@@ -30,12 +30,18 @@ WORKDIR /app
 COPY package*.json ./
 RUN bun install
 
-# Copy project files
-COPY . .
-
-# Install renv and restore R packages
+# ---- STEP 1: install renv ----
 RUN R -e "install.packages('renv', repos='https://cloud.r-project.org')"
+
+# ---- STEP 2: copy only dependency files ----
+COPY renv.lock renv.lock
+COPY renv/ renv/
+
+# ---- STEP 3: restore packages (cached layer) ----
 RUN R -e "renv::restore()"
+
+# ---- STEP 4: copy rest of project ----
+COPY . .
 
 EXPOSE 3000
 
