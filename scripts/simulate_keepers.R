@@ -553,3 +553,7 @@ simulate_keepers <- function(
     keeper_overrides_resolved = keeper_overrides_resolved
   ))
 }
+
+if (sys.nframe() == 0) {
+  simulate_keepers()
+}
