@@ -4,60 +4,107 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Project overview
 
-Billiken is an R/RStudio project for Billiken League fantasy baseball analysis. The repository is organized around:
+Billiken is a fantasy baseball analysis and draft simulation system for the Billiken League. The repository is organized around:
 
-- A Shiny-based draft assistant app in `DraftAssistant/` (primary interactive tool)
-- R Markdown analysis notebooks in the repo root (e.g., `Pre_Freeze_Rankings_2025.Rmd`, `Draft_Rankings_2025.Rmd`, `InSeason_Rankings_2025.Rmd`, `Simulate_Draft_2025.Rmd`)
-- Generated HTML notebook artifacts (`*.nb.html`) and CSV data exports (projections, rosters, standings)
+- **R pipeline** (`scripts/`) — data fetching, SGP (Standings Gained Points) calculation, roster optimization, draft simulation, and trade scenario analysis
+- **Bun/Hono API server** (`server.js`) — deployed on Railway, exposes REST endpoints that trigger R scripts for projections and draft pick comparisons
+- **Lovable dashboard** — external frontend for viewing results and triggering simulations (calls the Railway API)
+- **n8n automation** — runs daily data updates and triggers updates when the draft Google Sheet changes
+- **Shiny draft assistant** (`DraftAssistant/`) — legacy interactive tool
+- **Flask trade scenario viewer** (`app.py` + `templates/index.html`) — standalone trade scenario comparison UI
+- **R Markdown notebooks** — season-specific analysis (root-level `.Rmd` files)
 
 The RStudio project file `billiken.Rproj` anchors the working directory at the repo root.
 
-## Running the Shiny Draft Assistant
+## API Server (Railway deployment)
 
-The main interactive entry point is the Shiny app under `DraftAssistant/`, which uses `ui.R` and `server.R`.
+`server.js` is a Bun/Hono HTTP server deployed on Railway. It shells out to R scripts to run projections and draft simulations.
 
-### Start the app from an R session
+### Endpoints
 
-From the project root (e.g., by opening `billiken.Rproj` in RStudio or setting the working directory to the repo root), run:
+- `POST /run_projections` — runs `scripts/prefreeze_update.R` to refresh all data
+- `POST /run_pick_sim` — runs `scripts/compare_draft_picks.R` with `--players`, `--team`, `--round`, `--pick`, `--n_sims` args
+- `POST /run_simulation` — runs both `prefreeze_update.R` then `compare_draft_picks.R` (similar to `/run_pick_sim` but with data refresh)
+- `GET /projections` — serves `data/processed/projections_prefreeze.csv`
+- `GET /draft_results` — serves `data/raw/draft_latest.csv`
+- `GET /pick_comparisons` — serves the most recently modified file from `output/`
+- `GET /health` — health check
 
-```r path=null start=null
-shiny::runApp("DraftAssistant")
+### Running locally
+
+```sh
+bun server.js
 ```
 
-This will launch the "Billiken League Draft Assistant" Shiny application, which exposes:
+Requires Bun runtime. The server listens on `PORT` env var (default 3000).
 
-- Filters for team (`input$team`) and position (`input$pos`)
-- A `players` table (from the `par` data frame) showing projected value and surplus value
-- A `projected_standings` table with team-level category points
+### Docker / Railway deployment
 
-### Start the app from the shell
+The `Dockerfile` builds from `rocker/r-ver:4.4.1`, installs Bun + system libs, restores R packages via `renv::restore()`, and runs `bun server.js`. Railway deploys this image.
 
-From the shell in the repo root, you can start the app without opening RStudio:
+### Environment variables (API server)
 
-```sh path=null start=null
+The R scripts called by the server require these env vars (set in Railway):
+
+- `BILLIKEN_SHEET_ID` — Google Sheet ID for league data
+- `FANGRAPHS_EMAIL`, `FANGRAPHS_PASSWORD` — FanGraphs login credentials
+- `FANGRAPHS_COOKIE` — FanGraphs session cookie (set by `fangraphs_login.R`)
+- `ESPN_LEAGUE_ID`, `ESPN_SEASON`, `ESPN_SCORING_PERIOD_ID` — ESPN Fantasy API
+- `ESPN_S2`, `SWID` — ESPN auth cookies (for private leagues)
+- `BILLIKEN_PROJECTIONS_YEAR` — projection year (default: current year)
+- `PORT` — server port (default: 3000)
+
+### Known issues
+
+- `package.json` has `"start": "node server.js"` but the code uses `Bun.serve()` — these are mismatched
+- `runRScript()` uses `execSync` inside a Promise, blocking the event loop during long R runs
+- No authentication on endpoints — anyone with the Railway URL can trigger simulations
+- POST endpoints return `{status: "complete"}` without the actual results
+
+## n8n Integration
+
+n8n is used for workflow automation:
+
+- **Daily update** — triggers `POST /run_projections` to refresh data from Google Sheets, FanGraphs, and ESPN
+- **Draft sheet trigger** — watches the Billiken Google Sheet for draft changes and triggers `POST /run_pick_sim` or `/run_simulation`
+
+n8n calls the Railway-hosted API endpoints.
+
+## Flask Trade Scenario Viewer
+
+`app.py` is a Flask app that serves the trade scenario comparison UI (`templates/index.html`). It reads scenario results from `data/scenarios/` and trade definitions from `scenarios/`.
+
+### Endpoints
+
+- `GET /` — renders the scenario viewer page
+- `GET /api/scenario/<name>` — returns delta summary JSON for a scenario
+- `POST /api/scenarios` — saves a new trade scenario CSV
+- `GET /api/scenarios/<name>/definition` — returns the trade definition rows
+- `PUT /api/scenarios/<name>` — updates an existing scenario definition
+
+### Running locally
+
+```sh
+python app.py
+```
+
+Listens on port 5000 (and 65535). Requires Flask (`pip install flask`).
+
+## Running the Shiny Draft Assistant
+
+The Shiny app under `DraftAssistant/` is the legacy interactive tool.
+
+### Start the app
+
+```sh
 R -q -e "shiny::runApp('DraftAssistant')"
 ```
 
-This uses the same `ui.R`/`server.R` pair under `DraftAssistant/`.
+### Shiny app dependencies
 
-### Shiny app dependencies and assumptions
+Key R packages: `shiny`, `tidyverse`, `googlesheets4`, `fuzzyjoin`, `DT`, `stringi`.
 
-Key R packages used by the app (via `DraftAssistant/server.R` and `DraftAssistant/ui.R`) include:
-
-- `shiny`
-- `tidyverse` (dplyr, readr, ggplot2, etc.)
-- `googlesheets4`
-- `fuzzyjoin`
-- `DT`
-- `stringi` (used via `stringi::stri_trans_general` in notebooks; the app expects ASCII-normalized names consistent with the notebooks)
-
-The app assumes that:
-
-- Projection CSVs such as `hitter_projections_2025.csv` and `pitcher_projections_2025.csv` exist in the repo root and match the FanGraphs Depth Charts schema used in the notebooks.
-- The Billiken League Google Sheet referenced in `server.R` is reachable anonymously; the app calls `gs4_deauth()` and then `googlesheets4::read_sheet()` against multiple tabs (rosters, draft, salaries, positions).
-- Column names and shapes of both the Google Sheets and the projection CSVs remain consistent with what `server.R` expects (e.g., player name columns, team codes, and stat columns like `HR`, `R`, `RBI`, `SB`, `AVG`, `IP`, `W`, `SV`, `SO`, `ERA`, `WHIP`).
-
-If you change any of these data sources, you will likely need to update both `DraftAssistant/server.R` and the R Markdown notebooks that share the same logic.
+The app reads projection CSVs from the repo root and league data from the Billiken Google Sheet (de-authed/public access).
 
 ## R Markdown analysis notebooks
 
@@ -170,17 +217,39 @@ The SGP pipeline calculates player values based on historical standings data and
      - By default, baselines are cached under `data/scenarios/_baseline/<baseline_id>/` and reused across scenario runs.
      - If you run with `--baseline_cache=false`, then the baseline is stored alongside the scenario output instead: `data/scenarios/<scenario>/<timestamp>/baseline/`
 
+### Draft pick comparison
+
+8. **`compare_draft_picks.R`** - Compare candidates for a specific draft pick via simulation
+   ```sh
+   Rscript scripts/compare_draft_picks.R \
+     --players="Bryce Harper,Bo Bichette" \
+     --team="Blue Socks" \
+     --n_sims=100
+   ```
+   - Auto-detects next open pick for the team, or use `--round` and `--pick` to override
+   - If `--players` is omitted, auto-selects top N available players by sgpar
+   - Outputs comparison CSV under `data/compare_picks/`
+   - This is the script called by the Railway API's `/run_pick_sim` and `/run_simulation` endpoints
+
 ### Other scripts
 
 - **`download_fangraphs_projections.R`** - Downloads projections (called by `draft_day_update.R`)
+- **`download_fangraphs_auction_values.R`** - Downloads FanGraphs auction calculator dollar values
 - **`fetch_espn_positions.R`** - Fetches positional eligibility from ESPN API
+- **`fetch_espn_standings.R`** - Fetches historical standings from ESPN API
 - **`fangraphs_login.R`** - Authentication helper for FanGraphs (sourced by download script)
 - **`draft_simulation_lib.R`** - Shared draft simulation functions (`run_simulations()`, `summarize_simulations()`)
+- **`calculate_player_value.R`** - Calculates SGPAR and dollar values per player; outputs `data/processed/projected_player_value.csv`
 - **`simulate_keepers.R`** - Simulates keeper selections (supports optional trade overlays; outputs under the provided `output_dir`)
 - **`trade_utils.R`** - Helpers for reading/applying trade scenario CSVs (player moves + pick trades)
 - **`paths.R`** - Optional helper for resolving project-root-relative paths
-- **`prefreeze_update.R`** - Updates preseason roster data
-- **`update_current_rosters.R`** - Updates current roster state
+- **`prefreeze_update.R`** - Orchestrates the full data refresh pipeline (called by `server.js`); note: hardcodes `setwd("/app")` for Docker
+- **`update_current_rosters.R`** - Builds preseason rosters via bipartite matching on ESPN position eligibility
+- **`install_packages.R`** - Installs required R packages (redundant with renv)
+
+### Dead code (api/ directory)
+
+The `api/` directory contains `run_projections.R`, `run_pick_sim.R`, and `run_simulation.R`. These are thin wrappers that `server.js` does not use — it calls scripts directly. They can be removed.
 
 All scripts respect the `BILLIKEN_PROJECTIONS_YEAR` environment variable (defaults to current year) and filter projections to NL-only teams.
 
@@ -233,21 +302,33 @@ When making changes, keep the UI inputs and server logic in sync: modifying team
 
 ### Season/version handling
 
-Data files and notebooks are named by year and sometimes by date suffixes (e.g., `*_2025.csv`, `*_2026.csv`, `*_ros_250731.csv`). The live Shiny app currently targets the `2025` projection CSVs in the repo root.
+Data files and notebooks are named by year and sometimes by date suffixes (e.g., `*_2025.csv`, `*_2026.csv`). The scripts pipeline reads projections from `data/raw/` (e.g., `hitter_projections_2026.csv`) keyed by `BILLIKEN_PROJECTIONS_YEAR`. The Shiny app reads from the repo root.
 
 If you roll the system forward to a new season:
 
-- Add updated projection CSVs with the new season year
-- Update both `DraftAssistant/server.R` and any season-specific notebooks so that they read from the new files and, if necessary, new Google Sheet tabs
+- Set `BILLIKEN_PROJECTIONS_YEAR` to the new year
+- Add updated projection CSVs
+- Update both `DraftAssistant/server.R` and any season-specific notebooks
+
+## GitHub Actions
+
+`.github/workflows/run-trade-scenario.yml` triggers when `scenarios/*.csv` files are pushed to `main`. It runs `scripts/run_trade_scenario.R` for each changed scenario file. Note: this workflow does not commit results back, and may overlap with n8n-driven automation.
 
 ## Testing and linting
 
-There is no explicit automated testing or linting configuration checked into this repository:
+There is no explicit automated testing or linting configuration:
 
-- No `tests/` or `testthat`-style structure is present; the `test/` directory contains the stock Shiny example app and is not wired into any test runner.
-- There are no Makefiles, CI scripts, or R-specific linting configs.
+- No `tests/` or `testthat`-style structure is present; the `test/` directory contains a stock Shiny example app.
+- No Makefiles, CI scripts, or R-specific linting configs.
 
 In practice, changes are validated by:
 
 - Running the Shiny app (`shiny::runApp('DraftAssistant')`) and manually verifying player tables and projected standings
-- Rendering the relevant R Markdown notebooks and checking that all chunks run successfully and produce coherent standings and valuations.
+- Rendering the relevant R Markdown notebooks and checking that all chunks run successfully
+- Triggering the API endpoints on Railway and checking the output CSVs
+
+## Other artifacts
+
+- `main.py` and `pyproject.toml` — Replit scaffolding artifacts; not part of the active system
+- `run_app.R` — alternative app launcher that installs packages and runs a `TradeScenarios` Shiny app on port 5000
+- `renv.lock` + `renv/` — R package dependency management; `renv::restore()` is run in the Dockerfile

@@ -4,7 +4,15 @@
 # Run the data and player value updates for pre-freeze rosters. 
 #
 
-setwd("/app")
+# Set working directory: use /app in Docker, otherwise find billiken.Rproj
+if (dir.exists("/app") && file.exists("/app/billiken.Rproj")) {
+  setwd("/app")
+} else if (file.exists("billiken.Rproj")) {
+  # Already in project root
+} else if (file.exists("scripts/paths.R")) {
+  source("scripts/paths.R")
+  setwd(find_project_root())
+}
 
 # Ensure renv environment is active and packages are installed
 if (file.exists("renv/activate.R")) {

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { execSync } from "child_process";
+import { execFile } from "child_process";
 import { promises as fs } from "fs";
 import { join } from "path";
 import { readdirSync, statSync } from "fs";
@@ -11,7 +11,7 @@ let packagesReady = true;
 
 // Ensure required directories exist
 async function ensureDirectories() {
-  const dirs = ["data", "output"];
+  const dirs = ["data/raw", "data/processed", "output"];
   for (const dir of dirs) {
     try {
       await fs.mkdir(dir, { recursive: true });
@@ -21,23 +21,24 @@ async function ensureDirectories() {
   }
 }
 
-// Run R script with args
+// Run R script with args (non-blocking)
 function runRScript(scriptPath, args = []) {
   return new Promise((resolve, reject) => {
-    const cmd = `Rscript ${scriptPath} ${args.join(" ")}`;
-    try {
-      const output = execSync(cmd, {
-        cwd: process.cwd(),
-        timeout: 600000, // 10 minutes
-      });
-      resolve(output.toString());
-    } catch (error) {
-      reject(
-        new Error(
-          `R script failed:\n${error.message}\n\nSTDOUT:\n${error.stdout}\n\nSTDERR:\n${error.stderr}`
-        )
-      );
-    }
+    execFile("Rscript", [scriptPath, ...args], {
+      cwd: process.cwd(),
+      timeout: 600000, // 10 minutes
+      maxBuffer: 10 * 1024 * 1024, // 10 MB
+    }, (error, stdout, stderr) => {
+      if (error) {
+        reject(
+          new Error(
+            `R script failed:\n${error.message}\n\nSTDOUT:\n${stdout}\n\nSTDERR:\n${stderr}`
+          )
+        );
+      } else {
+        resolve(stdout);
+      }
+    });
   });
 }
 
@@ -57,6 +58,75 @@ function getLatestFile(dirPath) {
     return null;
   }
 }
+
+
+// POST /run_projections
+app.post("/run_projections", async (c) => {
+  if (!packagesReady) {
+    return c.json(
+      { error: "R packages still installing, please retry" },
+      { status: 503 }
+    );
+  }
+
+  try {
+    await ensureDirectories();
+
+    console.log("Running prefreeze_update.R...");
+    await runRScript("scripts/prefreeze_update.R");
+
+    return c.json({ status: "projections_updated" });
+
+  } catch (error) {
+
+    console.error("Projection update error:", error);
+
+    return c.json(
+      { error: error.message, status: "failed" },
+      { status: 500 }
+    );
+  }
+});
+
+// POST /run_pick_sim
+app.post("/run_pick_sim", async (c) => {
+  try {
+    const body = await c.req.json();
+
+    const compareArgs = ["--n_sims=200"];
+
+    if (body.players && Array.isArray(body.players)) {
+      compareArgs.push(`--players="${body.players.join(",")}"`);
+    }
+
+    if (body.team) {
+      compareArgs.push(`--team="${body.team}"`);
+    }
+
+    if (body.round) {
+      compareArgs.push(`--round=${body.round}`);
+    }
+
+    if (body.pick) {
+      compareArgs.push(`--pick=${body.pick}`);
+    }
+
+    console.log("Running compare_draft_picks.R...");
+
+    await runRScript("scripts/compare_draft_picks.R", compareArgs);
+
+    return c.json({ status: "simulation_complete" });
+
+  } catch (error) {
+
+    console.error("Simulation error:", error);
+
+    return c.json(
+      { error: error.message },
+      { status: 500 }
+    );
+  }
+});
 
 // POST /run_simulation
 app.post("/run_simulation", async (c) => {

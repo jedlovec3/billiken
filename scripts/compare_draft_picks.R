@@ -25,17 +25,6 @@
 #   --verbose     Print simulation progress (default: false)
 #   --output      Path to write the comparison CSV (default: auto-generated under data/compare_picks/)
 
-# Install packages if missing
-packages <- c('tidyverse', 'stringi', 'httr', 'data.table', 'jsonlite')
-for (pkg in packages) {
-  if (!require(pkg, character.only = TRUE)) {
-    message(sprintf("Installing %s...", pkg))
-    install.packages(pkg, repos = 'http://cran.r-project.org', dependencies = TRUE)
-  }
-}
-
-
-
 suppressPackageStartupMessages({
   library(tidyverse)
 })
