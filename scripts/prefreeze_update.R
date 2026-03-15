@@ -4,6 +4,11 @@
 # Run the data and player value updates for pre-freeze rosters. 
 #
 
+# Activate renv environment
+if (requireNamespace("renv", quietly = TRUE)) {
+  renv::activate()
+}
+
 setwd("/app")
 
 suppressPackageStartupMessages({
