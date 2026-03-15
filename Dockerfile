@@ -12,6 +12,10 @@ RUN apt-get update && apt-get install -y \
     libtiff5-dev \
     libicu-dev \
     libx11-dev \
+    libglpk-dev \
+    libwebp-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
     pandoc \
     nodejs \
     npm \
