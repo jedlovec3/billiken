@@ -13,16 +13,19 @@ suppressPackageStartupMessages({
   library(readr)
 })
 
+fg_cookie <- Sys.getenv("FANGRAPHS_COOKIE")
+
+if (fg_cookie == "") {
+  stop("FANGRAPHS_COOKIE environment variable not set", call. = FALSE)
+}
+
+message("Cookie length: ", nchar(fg_cookie))
+
 # Optional: if sourced from another script, fangraphs_login.R may already be loaded.
 if (!exists("fg_login")) {
   if (file.exists("scripts/fangraphs_login.R")) {
     source("scripts/fangraphs_login.R")
   }
-}
-
-if (exists("fg_login")) {
-  # Ensure we have a valid cookie jar session for Cloudflare-gated endpoints.
-  fg_login()
 }
 
 projections_year <- Sys.getenv("BILLIKEN_PROJECTIONS_YEAR", unset = "2026")
@@ -51,12 +54,12 @@ projections_year <- Sys.getenv("BILLIKEN_PROJECTIONS_YEAR", unset = "2026")
   )
 
   resp <- request(url) |>
-    req_cookie_preserve(path = "~/.fangraphs_cookiejar") |>
-    req_user_agent(.ua) |>
     req_headers(
+      Cookie = fg_cookie,
       Referer = .ref,
       Accept = "application/json, text/plain, */*"
     ) |>
+    req_user_agent(.ua) |>
     req_error(is_error = function(resp) FALSE) |>
     req_perform()
 
