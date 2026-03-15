@@ -8,9 +8,15 @@
 #     --n_sims=100 \
 #     --seed=42
 #
+#   # Auto-detect top 10 available players for the team:
+#   Rscript scripts/compare_draft_picks.R --team="Blue Socks"
+#
 # Options:
-#   --players     Comma-separated list of candidate player names (required)
+#   --players     Comma-separated list of candidate player names (optional;
+#                 if omitted, the top --top_n available players by sgpar are used)
 #   --team        Your team name (default: "Blue Socks")
+#   --top_n       Number of top available players to compare when --players is
+#                 omitted (default: 10)
 #   --round       Force a specific draft round (default: auto-detect next open pick)
 #   --pick        Force a specific draft pick number (default: auto-detect)
 #   --n_sims      Number of simulations per candidate (default: 100)
@@ -63,19 +69,9 @@ to_bool <- function(x, default = FALSE) {
 
 kv <- parse_kv_args(commandArgs(trailingOnly = TRUE))
 
-players_raw <- get_arg(kv, "players", NULL)
-if (is.null(players_raw) || identical(players_raw, "")) {
-  stop("Missing required argument: --players=\"Player A,Player B,...\"", call. = FALSE)
-}
-
-candidates <- trimws(strsplit(players_raw, ",", fixed = TRUE)[[1]])
-candidates <- candidates[candidates != ""]
-
-if (length(candidates) == 0) {
-  stop("No valid player names provided in --players.", call. = FALSE)
-}
-
+players_raw  <- get_arg(kv, "players", NULL)
 team_name    <- toupper(get_arg(kv, "team", "Blue Socks"))
+top_n        <- as.integer(get_arg(kv, "top_n", 10))
 round_arg    <- get_arg(kv, "round", NULL)
 pick_arg     <- get_arg(kv, "pick", NULL)
 n_sims       <- as.integer(get_arg(kv, "n_sims", 100))
@@ -87,6 +83,16 @@ projected_player_value_path <- get_arg(kv, "projected_player_value", "data/proce
 salaries_path <- get_arg(kv, "salaries", "data/raw/salaries_latest.csv")
 draft_path    <- get_arg(kv, "draft", "data/raw/draft_latest.csv")
 output_path   <- get_arg(kv, "output", NULL)
+
+auto_detect_players <- is.null(players_raw) || identical(players_raw, "")
+
+if (!auto_detect_players) {
+  candidates <- trimws(strsplit(players_raw, ",", fixed = TRUE)[[1]])
+  candidates <- candidates[candidates != ""]
+  if (length(candidates) == 0) {
+    stop("No valid player names provided in --players.", call. = FALSE)
+  }
+}
 
 # --------------------------------------------------------------------------
 # Detect next open pick for the team
@@ -117,15 +123,43 @@ if (!is.null(round_arg) && !is.null(pick_arg)) {
 }
 
 # --------------------------------------------------------------------------
-# Validate candidates exist in the player pool
+# Build the player pool and identify unavailable players (drafted + kept)
 # --------------------------------------------------------------------------
 
 player_pool <- load_draft_pool(projected_player_value_path, salaries_path)
 
-# Also check they aren't already rostered/drafted
-already_picked <- draft_order %>%
+already_drafted <- draft_order %>%
   filter(!is.na(player) & player != "" & player != "pass") %>%
   pull(player)
+
+keepers <- load_default_keepers(verbose = verbose)
+kept_players <- if (nrow(keepers) > 0) keepers$Name else character()
+
+unavailable <- unique(c(already_drafted, kept_players))
+
+# --------------------------------------------------------------------------
+# Determine candidates (auto-detect or validate user-supplied list)
+# --------------------------------------------------------------------------
+
+if (auto_detect_players) {
+  # Find the top N available players by sgpar (excluding keepers and drafted)
+  available_pool <- player_pool %>%
+    filter(!Name %in% unavailable) %>%
+    filter(!is.na(sgpar)) %>%
+    arrange(desc(sgpar)) %>%
+    slice_head(n = top_n)
+
+  if (nrow(available_pool) == 0) {
+    stop("No available players found in the player pool.", call. = FALSE)
+  }
+
+  candidates <- available_pool$Name
+  message(sprintf("Auto-selected top %d available players by sgpar:", length(candidates)))
+  for (nm in candidates) {
+    sgp <- available_pool$sgpar[available_pool$Name == nm]
+    message(sprintf("  %s (sgpar: %.2f)", nm, sgp))
+  }
+}
 
 missing    <- character()
 drafted    <- character()
@@ -138,7 +172,7 @@ for (cand in candidates) {
     missing <- c(missing, cand)
     next
   }
-  if (cand %in% already_picked) {
+  if (cand %in% unavailable) {
     drafted <- c(drafted, cand)
     next
   }
@@ -151,7 +185,7 @@ if (length(missing) > 0) {
   message(sprintf("WARNING: Player(s) not found in projections: %s", paste(missing, collapse = ", ")))
 }
 if (length(drafted) > 0) {
-  message(sprintf("WARNING: Player(s) already drafted: %s", paste(drafted, collapse = ", ")))
+  message(sprintf("WARNING: Player(s) already kept or drafted: %s", paste(drafted, collapse = ", ")))
 }
 if (length(valid) == 0) {
   stop("No valid candidates remaining after validation.", call. = FALSE)
