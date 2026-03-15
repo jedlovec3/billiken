@@ -62,16 +62,24 @@ fetch_projection <- function(url, path, type) {
 
   message("Requesting ", url)
 
-  req <- request(url) |>
-    req_cookie_preserve(path = "~/.fangraphs_cookiejar") |>
-    req_user_agent(.ua) |>
-    req_headers(
-      Referer = "https://www.fangraphs.com/projections",
-      `X-Requested-With` = "XMLHttpRequest",
-      Accept = "application/json, text/plain, */*",
-      Origin = "https://www.fangraphs.com"
-    ) |>
-    req_error(is_error = function(resp) FALSE)
+fg_cookie <- Sys.getenv("FANGRAPHS_COOKIE")
+
+if (fg_cookie == "") {
+  stop("FANGRAPHS_COOKIE environment variable not set")
+}
+
+message("Using Fangraphs cookie length: ", nchar(fg_cookie))
+  
+req <- request(url) |>
+  req_headers(
+    Cookie = fg_cookie,
+    Referer = "https://www.fangraphs.com/projections",
+    `X-Requested-With` = "XMLHttpRequest",
+    Accept = "application/json, text/plain, */*",
+    Origin = "https://www.fangraphs.com"
+  ) |>
+  req_user_agent(.ua) |>
+  req_error(is_error = function(resp) FALSE)
 
 
   resp <- req_perform(req)
