@@ -76,12 +76,12 @@ message("Calculated Player Standings Gained Points. Calculating player value..."
 source("scripts/calculate_player_value.R")
 
 message("Calculated player value. Simulating keepers...")
-source("scripts/simulate_keepers.R")
-simulate_keepers(
-  sgpar_random = 0.00,
-  keepers_path = "data/raw/keepers.csv",
-  salaries_path = "data/raw/salaries_latest.csv"
-)
+# source("scripts/simulate_keepers.R")
+# simulate_keepers(
+#  sgpar_random = 0.00,
+#  keepers_path = "data/raw/keepers.csv",
+#  salaries_path = "data/raw/salaries_latest.csv"
+#)
 
 message("Simulated keepers. Update current rosters.")
 source("scripts/update_current_rosters.R")
