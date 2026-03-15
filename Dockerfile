@@ -1,4 +1,4 @@
-FROM rocker/r-ver:4.3.2
+FROM rocker/r-ver:4.4.1
 
 # Install system libraries needed by common R packages
 RUN apt-get update && apt-get install -y \
