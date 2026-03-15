@@ -1,11 +1,7 @@
-FROM oven/bun:latest
+FROM rocker/r-ver:4.3.2
 
-# Install R and system dependencies required by tidyverse/systemfonts
+# Install system libraries needed by common R packages
 RUN apt-get update && apt-get install -y \
-    r-base \
-    r-base-dev \
-    build-essential \
-    gfortran \
     libcurl4-openssl-dev \
     libssl-dev \
     libxml2-dev \
@@ -14,23 +10,28 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libjpeg-dev \
     libtiff5-dev \
-    pkg-config \
     libicu-dev \
     libx11-dev \
     pandoc \
-    --no-install-recommends \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Bun
+RUN npm install -g bun
 
 WORKDIR /app
 
+# Install JS dependencies first (better caching)
 COPY package*.json ./
 RUN bun install
 
+# Copy project files
 COPY . .
 
-# Install renv and restore packages during build (not runtime)
+# Install renv and restore R packages
 RUN R -e "install.packages('renv', repos='https://cloud.r-project.org')"
-RUN R -e "if (file.exists('renv.lock')) renv::restore()"
+RUN R -e "renv::restore()"
 
 EXPOSE 3000
 
