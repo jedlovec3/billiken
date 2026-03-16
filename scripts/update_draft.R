@@ -2,6 +2,25 @@
 # Pulls only the draft tab from the Billiken Google Sheet and writes it to
 # data/raw/draft_latest.csv.  Designed to be fast — no FanGraphs or ESPN calls.
 
+# Set working directory: use /app in Docker, otherwise find billiken.Rproj
+if (dir.exists("/app") && file.exists("/app/billiken.Rproj")) {
+  setwd("/app")
+} else if (file.exists("billiken.Rproj")) {
+  # Already in project root
+} else if (file.exists("scripts/paths.R")) {
+  source("scripts/paths.R")
+  setwd(find_project_root())
+}
+
+# Ensure renv environment is active and packages are installed
+if (file.exists("renv/activate.R")) {
+  source("renv/activate.R")
+}
+
+if (requireNamespace("renv", quietly = TRUE)) {
+  renv::restore(prompt = FALSE)
+}
+
 suppressPackageStartupMessages({
   library(readr)
   library(dplyr)
