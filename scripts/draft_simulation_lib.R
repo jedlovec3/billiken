@@ -685,15 +685,15 @@ calculate_standings <- function(rosters, player_pool, sim_num = 1) {
       R = sum(R, na.rm = TRUE),
       RBI = sum(RBI, na.rm = TRUE),
       SB = sum(SB, na.rm = TRUE),
-      AVG = sum(H, na.rm = TRUE) / sum(AB, na.rm = TRUE),
+      AVG = ifelse(sum(AB, na.rm = TRUE) > 0, sum(H, na.rm = TRUE) / sum(AB, na.rm = TRUE), 0),
       IP = sum(IP, na.rm = TRUE),
       W = sum(W, na.rm = TRUE),
       SV = sum(SV, na.rm = TRUE),
       SO = sum(SO, na.rm = TRUE),
       ER = sum(ER, na.rm = TRUE),
       WH = sum(WH, na.rm = TRUE),
-      ERA = sum(ER, na.rm = TRUE) * 9 / sum(IP, na.rm = TRUE),
-      WHIP = sum(WH, na.rm = TRUE) / sum(IP, na.rm = TRUE),
+      ERA = ifelse(sum(IP, na.rm = TRUE) > 0, sum(ER, na.rm = TRUE) * 9 / sum(IP, na.rm = TRUE), Inf),
+      WHIP = ifelse(sum(IP, na.rm = TRUE) > 0, sum(WH, na.rm = TRUE) / sum(IP, na.rm = TRUE), Inf),
       .groups = "drop"
     )
 
@@ -874,15 +874,15 @@ summarize_simulations <- function(all_standings) {
     group_by(team) %>%
     summarise(
       n_sims = n(),
-      wins = sum(rank == 1),
-      top_3 = sum(rank <= 3),
-      avg_rank = mean(rank),
-      avg_pts = mean(total_pts),
-      avg_sgpar = mean(sgpar),
-      avg_hit_pts = mean(hit_pts),
-      avg_pit_pts = mean(pit_pts),
-      min_pts = min(total_pts),
-      max_pts = max(total_pts),
+      wins = sum(rank == 1, na.rm = TRUE),
+      top_3 = sum(rank <= 3, na.rm = TRUE),
+      avg_rank = mean(rank, na.rm = TRUE),
+      avg_pts = mean(total_pts, na.rm = TRUE),
+      avg_sgpar = mean(sgpar, na.rm = TRUE),
+      avg_hit_pts = mean(hit_pts, na.rm = TRUE),
+      avg_pit_pts = mean(pit_pts, na.rm = TRUE),
+      min_pts = min(total_pts, na.rm = TRUE),
+      max_pts = max(total_pts, na.rm = TRUE),
       .groups = "drop"
     ) %>%
     arrange(avg_rank)

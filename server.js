@@ -9,6 +9,10 @@ const PORT = process.env.PORT || 3000;
 
 let packagesReady = true;
 
+// Mutex to prevent concurrent R script execution
+let rScriptRunning = false;
+let rScriptStartedAt = null;
+
 // Ensure required directories exist
 async function ensureDirectories() {
   const dirs = ["data/raw", "data/processed", "output"];
@@ -28,6 +32,7 @@ function runRScript(scriptPath, args = []) {
       cwd: process.cwd(),
       timeout: 1800000, // 30 minutes
       maxBuffer: 10 * 1024 * 1024, // 10 MB
+      env: { ...process.env, OPENBLAS_NUM_THREADS: "1" },
     }, (error, stdout, stderr) => {
       if (error) {
         reject(
@@ -69,6 +74,16 @@ app.post("/run_projections", async (c) => {
     );
   }
 
+  if (rScriptRunning) {
+    return c.json(
+      { error: "An R script is already running", startedAt: rScriptStartedAt },
+      { status: 409 }
+    );
+  }
+
+  rScriptRunning = true;
+  rScriptStartedAt = new Date().toISOString();
+
   try {
     await ensureDirectories();
 
@@ -85,11 +100,24 @@ app.post("/run_projections", async (c) => {
       { error: error.message, status: "failed" },
       { status: 500 }
     );
+  } finally {
+    rScriptRunning = false;
+    rScriptStartedAt = null;
   }
 });
 
 // POST /run_pick_sim
 app.post("/run_pick_sim", async (c) => {
+  if (rScriptRunning) {
+    return c.json(
+      { error: "An R script is already running", startedAt: rScriptStartedAt },
+      { status: 409 }
+    );
+  }
+
+  rScriptRunning = true;
+  rScriptStartedAt = new Date().toISOString();
+
   try {
     const body = await c.req.json();
 
@@ -125,6 +153,9 @@ app.post("/run_pick_sim", async (c) => {
       { error: error.message },
       { status: 500 }
     );
+  } finally {
+    rScriptRunning = false;
+    rScriptStartedAt = null;
   }
 });
 
@@ -136,6 +167,16 @@ app.post("/run_simulation", async (c) => {
       { status: 503 }
     );
   }
+
+  if (rScriptRunning) {
+    return c.json(
+      { error: "An R script is already running", startedAt: rScriptStartedAt },
+      { status: 409 }
+    );
+  }
+
+  rScriptRunning = true;
+  rScriptStartedAt = new Date().toISOString();
 
   try {
     await ensureDirectories();
@@ -174,6 +215,9 @@ app.post("/run_simulation", async (c) => {
       { error: error.message, status: "failed" },
       { status: 500 }
     );
+  } finally {
+    rScriptRunning = false;
+    rScriptStartedAt = null;
   }
 });
 
