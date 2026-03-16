@@ -127,23 +127,46 @@ kept_players <- if (nrow(keepers) > 0) keepers$Name else character()
 unavailable <- unique(c(already_drafted, kept_players))
 
 # --------------------------------------------------------------------------
+# Prepare simulation context (need roster template for slot eligibility)
+# --------------------------------------------------------------------------
+
+message("Preparing simulation context...")
+sim_ctx <- prepare_sim_context(
+  projected_player_value_path = projected_player_value_path,
+  salaries_path = salaries_path,
+  draft_path = draft_path,
+  verbose = verbose
+)
+
+# Helper: can this player be assigned to an open slot on the team?
+can_fit_roster <- function(player_name, team, rosters_tmpl, pool) {
+  row <- pool %>% filter(Name == player_name)
+  if (nrow(row) == 0) return(FALSE)
+  !is.na(find_best_slot(rosters_tmpl, team, row))
+}
+
+# --------------------------------------------------------------------------
 # Determine candidates (auto-detect or validate user-supplied list)
 # --------------------------------------------------------------------------
 
 if (auto_detect_players) {
-  # Find the top N available players by sgpar (excluding keepers and drafted)
+  # Find the top N available players by sgpar that can fit on the roster
   available_pool <- player_pool %>%
     filter(!Name %in% unavailable) %>%
     filter(!is.na(sgpar)) %>%
-    arrange(desc(sgpar)) %>%
-    slice_head(n = top_n)
+    arrange(desc(sgpar))
+
+  fits <- vapply(available_pool$Name, function(nm) {
+    can_fit_roster(nm, team_name, sim_ctx$rosters_template, sim_ctx$player_pool)
+  }, logical(1))
+  available_pool <- available_pool[fits, ] %>% slice_head(n = top_n)
 
   if (nrow(available_pool) == 0) {
-    stop("No available players found in the player pool.", call. = FALSE)
+    stop("No available players found that fit an open roster slot.", call. = FALSE)
   }
 
   candidates <- available_pool$Name
-  message(sprintf("Auto-selected top %d available players by sgpar:", length(candidates)))
+  message(sprintf("Auto-selected top %d available players with open roster slots:", length(candidates)))
   for (nm in candidates) {
     sgp <- available_pool$sgpar[available_pool$Name == nm]
     message(sprintf("  %s (sgpar: %.2f)", nm, sgp))
@@ -152,6 +175,7 @@ if (auto_detect_players) {
 
 missing    <- character()
 drafted    <- character()
+no_slot    <- character()
 valid      <- character()
 salary_map <- numeric()
 
@@ -165,6 +189,10 @@ for (cand in candidates) {
     drafted <- c(drafted, cand)
     next
   }
+  if (!can_fit_roster(cand, team_name, sim_ctx$rosters_template, sim_ctx$player_pool)) {
+    no_slot <- c(no_slot, cand)
+    next
+  }
   valid <- c(valid, cand)
   sal <- row$salary[1]
   salary_map[cand] <- ifelse(is.na(sal), DEFAULT_SALARY, sal)
@@ -176,21 +204,12 @@ if (length(missing) > 0) {
 if (length(drafted) > 0) {
   message(sprintf("WARNING: Player(s) already kept or drafted: %s", paste(drafted, collapse = ", ")))
 }
+if (length(no_slot) > 0) {
+  message(sprintf("WARNING: No open roster slot for: %s", paste(no_slot, collapse = ", ")))
+}
 if (length(valid) == 0) {
   stop("No valid candidates remaining after validation.", call. = FALSE)
 }
-
-# --------------------------------------------------------------------------
-# Prepare simulation context once (data loading + template building)
-# --------------------------------------------------------------------------
-
-message("Preparing simulation context...")
-sim_ctx <- prepare_sim_context(
-  projected_player_value_path = projected_player_value_path,
-  salaries_path = salaries_path,
-  draft_path = draft_path,
-  verbose = verbose
-)
 
 # --------------------------------------------------------------------------
 # Run simulations for each candidate

@@ -15,7 +15,7 @@ let rScriptStartedAt = null;
 
 // Ensure required directories exist
 async function ensureDirectories() {
-  const dirs = ["data/raw", "data/processed", "output"];
+  const dirs = ["data/raw", "data/processed", "data/compare_picks", "output"];
   for (const dir of dirs) {
     try {
       await fs.mkdir(dir, { recursive: true });
@@ -62,6 +62,22 @@ function getLatestFile(dirPath) {
   } catch (e) {
     return null;
   }
+}
+
+// Parse CSV text into an array of objects (header row → keys)
+function csvToJson(csv) {
+  const lines = csv.trim().split("\n");
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+  return lines.slice(1).map((line) => {
+    const vals = line.split(",").map((v) => v.trim().replace(/^"|"$/g, ""));
+    const obj = {};
+    headers.forEach((h, i) => {
+      const num = Number(vals[i]);
+      obj[h] = isNaN(num) ? vals[i] : num;
+    });
+    return obj;
+  });
 }
 
 
@@ -160,6 +176,7 @@ app.post("/run_pick_sim", async (c) => {
 });
 
 // POST /run_simulation
+// Pulls fresh draft sheet then runs pick comparison simulation.
 app.post("/run_simulation", async (c) => {
   if (!packagesReady) {
     return c.json(
@@ -181,34 +198,21 @@ app.post("/run_simulation", async (c) => {
   try {
     await ensureDirectories();
 
-    const body = await c.req.json();
+    console.log("Running update_draft.R (pull draft sheet)...");
+    await runRScript("scripts/update_draft.R");
 
-    // Save draft state
-    const draftStatePath = join("data", "draft_state.json");
-    await fs.writeFile(draftStatePath, JSON.stringify(body, null, 2));
+    console.log("Running compare_draft_picks.R --n_sims=20...");
+    await runRScript("scripts/compare_draft_picks.R", ["--n_sims=20"]);
 
-    console.log("Running prefreeze_update.R...");
-    await runRScript("scripts/prefreeze_update.R");
-
-    console.log("Running compare_draft_picks.R...");
-    const compareArgs = ["--n_sims=100"];
-
-    if (body.players && Array.isArray(body.players)) {
-      compareArgs.push(`--players="${body.players.join(",")}"`);
-    }
-    if (body.team) {
-      compareArgs.push(`--team="${body.team}"`);
-    }
-    if (body.round) {
-      compareArgs.push(`--round=${body.round}`);
-    }
-    if (body.pick) {
-      compareArgs.push(`--pick=${body.pick}`);
+    // Read the latest comparison CSV and return as JSON
+    const latestFile = getLatestFile("data/compare_picks");
+    if (latestFile) {
+      const csv = await fs.readFile(latestFile, "utf-8");
+      const rows = csvToJson(csv);
+      return c.json({ status: "complete", results: rows, file: latestFile.split("/").pop() });
     }
 
-    await runRScript("scripts/compare_draft_picks.R", compareArgs);
-
-    return c.json({ status: "complete" });
+    return c.json({ status: "complete", results: [] });
   } catch (error) {
     console.error("Simulation error:", error);
     return c.json(
@@ -260,10 +264,10 @@ app.get("/draft_results", async (c) => {
   }
 });
 
-// GET /pick_comparisons
+// GET /pick_comparisons — returns latest comparison as JSON (for Lovable)
 app.get("/pick_comparisons", async (c) => {
   try {
-    const latestFile = getLatestFile("output");
+    const latestFile = getLatestFile("data/compare_picks");
 
     if (!latestFile) {
       return c.json(
@@ -273,11 +277,10 @@ app.get("/pick_comparisons", async (c) => {
     }
 
     const content = await fs.readFile(latestFile, "utf-8");
+    const rows = csvToJson(content);
     const fileName = latestFile.split("/").pop();
 
-    c.header("Content-Type", "text/csv");
-    c.header("Content-Disposition", `attachment; filename=${fileName}`);
-    return c.text(content);
+    return c.json({ file: fileName, results: rows });
   } catch (error) {
     console.error("Pick comparisons error:", error);
     return c.json(
