@@ -439,15 +439,21 @@ fill_existing_draft_picks <- function(rosters, draft_order, player_pool) {
 
   if (nrow(picked) == 0) return(rosters)
 
+  # Players already on rosters (e.g. keepers) — skip to avoid duplicates
+  already_rostered <- rosters %>% filter(!is.na(player)) %>% pull(player) %>% unique()
+
   for (i in seq_len(nrow(picked))) {
     team_name <- picked$billikenTeam[i]
     player_name <- picked$player[i]
     player_salary <- picked$salary[i]
 
+    if (player_name %in% already_rostered) next
+
     player_row <- player_pool %>% filter(Name == player_name)
     if (nrow(player_row) == 0) next
 
     rosters <- assign_player(rosters, team_name, player_name, player_salary, "1", player_row)
+    already_rostered <- c(already_rostered, player_name)
   }
 
   rosters
@@ -749,8 +755,8 @@ prepare_sim_context <- function(
   }
 
   rosters_template <- build_empty_rosters(teams)
-  rosters_template <- fill_existing_draft_picks(rosters_template, draft_order_template, player_pool)
 
+  # Fill keepers FIRST — they form the base roster
   if (is.null(simulated_keepers) && isTRUE(use_default_keepers)) {
     simulated_keepers <- load_default_keepers(
       keepers_path = keepers_path,
@@ -767,6 +773,9 @@ prepare_sim_context <- function(
       force = force_simulated_keepers
     )
   }
+
+  # Then layer draft picks on top (skips players already rostered as keepers)
+  rosters_template <- fill_existing_draft_picks(rosters_template, draft_order_template, player_pool)
 
   player_pool <- apply_fangraphs_salary_fallback(player_pool, rosters_template, verbose = verbose)
 
