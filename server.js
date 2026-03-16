@@ -12,6 +12,7 @@ let packagesReady = true;
 // Mutex to prevent concurrent R script execution
 let rScriptRunning = false;
 let rScriptStartedAt = null;
+let lastSimulationResult = null; // { status, completedAt, error? }
 
 // Ensure required directories exist
 async function ensureDirectories() {
@@ -176,7 +177,8 @@ app.post("/run_pick_sim", async (c) => {
 });
 
 // POST /run_simulation
-// Pulls fresh draft sheet then runs pick comparison simulation.
+// Kicks off update_draft.R + compare_draft_picks.R in the background and
+// returns immediately so callers (n8n, Lovable) don't time out.
 app.post("/run_simulation", async (c) => {
   if (!packagesReady) {
     return c.json(
@@ -194,35 +196,43 @@ app.post("/run_simulation", async (c) => {
 
   rScriptRunning = true;
   rScriptStartedAt = new Date().toISOString();
+  lastSimulationResult = null;
 
-  try {
-    await ensureDirectories();
+  // Fire-and-forget: run in background
+  (async () => {
+    try {
+      await ensureDirectories();
 
-    console.log("Running update_draft.R (pull draft sheet)...");
-    await runRScript("scripts/update_draft.R");
+      console.log("Running update_draft.R (pull draft sheet)...");
+      await runRScript("scripts/update_draft.R");
 
-    console.log("Running compare_draft_picks.R --n_sims=20...");
-    await runRScript("scripts/compare_draft_picks.R", ["--n_sims=20"]);
+      console.log("Running compare_draft_picks.R --n_sims=20...");
+      await runRScript("scripts/compare_draft_picks.R", ["--n_sims=20"]);
 
-    // Read the latest comparison CSV and return as JSON
-    const latestFile = getLatestFile("data/compare_picks");
-    if (latestFile) {
-      const csv = await fs.readFile(latestFile, "utf-8");
-      const rows = csvToJson(csv);
-      return c.json({ status: "complete", results: rows, file: latestFile.split("/").pop() });
+      lastSimulationResult = { status: "complete", completedAt: new Date().toISOString() };
+      console.log("Simulation complete.");
+    } catch (error) {
+      console.error("Simulation error:", error);
+      lastSimulationResult = { status: "failed", error: error.message, completedAt: new Date().toISOString() };
+    } finally {
+      rScriptRunning = false;
+      rScriptStartedAt = null;
     }
+  })();
 
-    return c.json({ status: "complete", results: [] });
-  } catch (error) {
-    console.error("Simulation error:", error);
-    return c.json(
-      { error: error.message, status: "failed" },
-      { status: 500 }
-    );
-  } finally {
-    rScriptRunning = false;
-    rScriptStartedAt = null;
+  // Return immediately
+  return c.json({ status: "running", startedAt: rScriptStartedAt });
+});
+
+// GET /simulation_status
+app.get("/simulation_status", (c) => {
+  if (rScriptRunning) {
+    return c.json({ status: "running", startedAt: rScriptStartedAt });
   }
+  if (lastSimulationResult) {
+    return c.json(lastSimulationResult);
+  }
+  return c.json({ status: "idle" });
 });
 
 // GET /projections
