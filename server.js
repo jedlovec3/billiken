@@ -7,6 +7,15 @@ import { readdirSync, statSync } from "fs";
 const app = new Hono();
 const PORT = process.env.PORT || 3000;
 
+// CORS middleware — allow Lovable frontend and local dev to call the API
+app.use("*", async (c, next) => {
+  await next();
+  c.header("Access-Control-Allow-Origin", "*");
+  c.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  c.header("Access-Control-Allow-Headers", "Content-Type");
+});
+app.options("*", (c) => c.text("", 204));
+
 let packagesReady = true;
 
 // Mutex to prevent concurrent R script execution
@@ -297,6 +306,127 @@ app.get("/pick_comparisons", async (c) => {
       { error: error.message },
       { status: 500 }
     );
+  }
+});
+
+// ============================================================
+// In-season endpoints
+// ============================================================
+
+// POST /run_inseason_update — trigger daily in-season pipeline
+app.post("/run_inseason_update", async (c) => {
+  if (!packagesReady) {
+    return c.json(
+      { error: "R packages still installing, please retry" },
+      { status: 503 }
+    );
+  }
+
+  if (rScriptRunning) {
+    return c.json(
+      { error: "An R script is already running", startedAt: rScriptStartedAt },
+      { status: 409 }
+    );
+  }
+
+  rScriptRunning = true;
+  rScriptStartedAt = new Date().toISOString();
+
+  try {
+    await ensureDirectories();
+    console.log("Running inseason_update.R...");
+    await runRScript("scripts/inseason_update.R");
+    return c.json({ status: "inseason_update_complete" });
+  } catch (error) {
+    console.error("In-season update error:", error);
+    return c.json(
+      { error: error.message, status: "failed" },
+      { status: 500 }
+    );
+  } finally {
+    rScriptRunning = false;
+    rScriptStartedAt = null;
+  }
+});
+
+// GET /inseason_standings — projected end-of-season standings as JSON
+app.get("/inseason_standings", async (c) => {
+  try {
+    const filePath = join("data", "processed", "inseason_projected_standings.csv");
+    const content = await fs.readFile(filePath, "utf-8");
+    const rows = csvToJson(content);
+
+    // Also read status file for metadata
+    let status = null;
+    try {
+      const statusContent = await fs.readFile(
+        join("data", "processed", "inseason_status.json"),
+        "utf-8"
+      );
+      status = JSON.parse(statusContent);
+    } catch (_) {
+      // Status file may not exist yet
+    }
+
+    return c.json({ standings: rows, status });
+  } catch (error) {
+    // If no standings file yet, return status only
+    try {
+      const statusContent = await fs.readFile(
+        join("data", "processed", "inseason_status.json"),
+        "utf-8"
+      );
+      return c.json(
+        { error: "No standings data yet", status: JSON.parse(statusContent) },
+        { status: 404 }
+      );
+    } catch (_) {
+      return c.json(
+        { error: "No in-season data available. Run /run_inseason_update first." },
+        { status: 404 }
+      );
+    }
+  }
+});
+
+// GET /inseason_team/:team — player-level ROS projections for a team
+app.get("/inseason_team/:team", async (c) => {
+  try {
+    const teamParam = decodeURIComponent(c.req.param("team")).toLowerCase();
+    const filePath = join("data", "processed", "inseason_team_details.csv");
+    const content = await fs.readFile(filePath, "utf-8");
+    const allRows = csvToJson(content);
+
+    const teamRows = allRows.filter(
+      (r) => r.team_name && r.team_name.toLowerCase().includes(teamParam)
+    );
+
+    if (teamRows.length === 0) {
+      return c.json(
+        { error: `No data for team matching '${teamParam}'` },
+        { status: 404 }
+      );
+    }
+
+    return c.json({ team: teamRows[0].team_name, players: teamRows });
+  } catch (error) {
+    return c.json(
+      { error: "Team details not available. Run /run_inseason_update first." },
+      { status: 404 }
+    );
+  }
+});
+
+// GET /inseason_status — pipeline health check
+app.get("/inseason_status", async (c) => {
+  try {
+    const content = await fs.readFile(
+      join("data", "processed", "inseason_status.json"),
+      "utf-8"
+    );
+    return c.json(JSON.parse(content));
+  } catch (_) {
+    return c.json({ status: "never_run" });
   }
 });
 
