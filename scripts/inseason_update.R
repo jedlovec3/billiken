@@ -23,6 +23,7 @@ if (dir.exists("/app") && file.exists("/app/billiken.Rproj")) {
 }
 
 if (file.exists("renv/activate.R")) source("renv/activate.R")
+if (requireNamespace("renv", quietly = TRUE)) renv::restore(prompt = FALSE)
 
 suppressPackageStartupMessages({
   library(tidyverse)

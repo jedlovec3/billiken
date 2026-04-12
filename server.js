@@ -442,6 +442,7 @@ await ensureDirectories();
 Bun.serve({
   port: PORT,
   fetch: app.fetch,
+  idleTimeout: 255, // seconds — R scripts can take a few minutes
 });
 
 console.log(`Billiken API server running on port ${PORT}`);
