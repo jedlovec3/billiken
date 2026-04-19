@@ -7,8 +7,9 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 Billiken is a fantasy baseball analysis and draft simulation system for the Billiken League. The repository is organized around:
 
 - **R pipeline** (`scripts/`) — data fetching, SGP (Standings Gained Points) calculation, roster optimization, draft simulation, and trade scenario analysis
-- **Bun/Hono API server** (`server.js`) — deployed on Railway, exposes REST endpoints that trigger R scripts for projections and draft pick comparisons
-- **Lovable dashboard** — external frontend for viewing results and triggering simulations (calls the Railway API)
+- **In-season monitor** (`scripts/inseason_update.R`) — daily pipeline that projects end-of-season roto standings by combining ESPN YTD stats with FanGraphs ROS projections. See `docs/INSEASON_MONITOR.md` for full details.
+- **Bun/Hono API server** (`server.js`) — deployed on Railway, exposes REST endpoints that trigger R scripts for projections, draft pick comparisons, and in-season standings updates
+- **Lovable dashboards** — external frontends: one for draft simulation results, one for in-season standings monitoring (both call the Railway API)
 - **n8n automation** — runs daily data updates and triggers updates when the draft Google Sheet changes
 - **Shiny draft assistant** (`DraftAssistant/`) — legacy interactive tool
 - **Flask trade scenario viewer** (`app.py` + `templates/index.html`) — standalone trade scenario comparison UI
@@ -28,6 +29,10 @@ The RStudio project file `billiken.Rproj` anchors the working directory at the r
 - `GET /projections` — serves `data/processed/projections_prefreeze.csv`
 - `GET /draft_results` — serves `data/raw/draft_latest.csv`
 - `GET /pick_comparisons` — serves the most recently modified file from `output/`
+- `POST /run_inseason_update` — runs `scripts/inseason_update.R` (daily in-season pipeline)
+- `GET /inseason_standings` — serves projected end-of-season standings as JSON
+- `GET /inseason_team/:team` — serves player-level ROS projections for a specific team
+- `GET /inseason_status` — pipeline health/status check
 - `GET /health` — health check
 
 ### Running locally
