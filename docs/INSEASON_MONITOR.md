@@ -75,8 +75,9 @@ The core orchestrator. Runs all 9 steps of the projection pipeline:
    - `WHIP = (BB_ytd + BB_ros + HA_ytd + HA_ros) / (IP_ytd + IP_ros)`
 7. **Rank and score** — ranks teams 1–10 in each of 10 categories (R, HR, RBI, SB, AVG, W, SV, SO, ERA, WHIP). Roto points = `N_TEAMS + 1 - rank`. Total points = sum across categories.
 8. **Output standings + team details** — writes:
-   - `data/processed/inseason_projected_standings.csv` — team-level projections with ranks and roto points
-   - `data/processed/inseason_team_details.csv` — player-level ROS projection breakdown by team, including `sgp_total` (per‑player ROS SGP)
+   - `data/processed/inseason_projected_standings.csv` — team-level projections using **all** rostered players (bench + IL + minors included)
+   - `data/processed/inseason_projected_standings_active.csv` — same schema, but computed only from players in **active** ESPN lineup slots (excludes bench, IL, minors). Use this view to avoid double-counting the ROS stats of stashed players that would displace an active player upon return.
+   - `data/processed/inseason_team_details.csv` — player-level ROS projection breakdown by team, including `sgp_total` (per‑player ROS SGP) and `roster_status` (`active` / `bench` / `IL` / `minors`)
 9. **Output free agents + status** — writes:
    - `data/processed/inseason_free_agents.csv` — ranked free‑agent pool with ROS SGP and position eligibility
    - `data/processed/inseason_status.json` — pipeline status (`success`/`error`, `last_updated`, `warnings`, `error_message`, `sgp_source` = `unit_values`\|`fallback`, `n_free_agents`)
@@ -92,7 +93,7 @@ All served by `server.js` (Bun/Hono on Railway).
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/run_inseason_update` | Triggers `scripts/inseason_update.R`. Returns 409 if an R script is already running. |
-| `GET` | `/inseason_standings` | Returns `{ standings: [...], status: {...} }` from the CSV + status JSON. |
+| `GET` | `/inseason_standings` | Returns `{ standings: [...], view, status: {...} }` from the CSV + status JSON. Query param `active_only=true` serves the active-slot-only projection (default `false` = all rostered). |
 | `GET` | `/inseason_team/:team` | Returns `{ team, players: [...] }` filtered by team name (case-insensitive substring match). |
 | `GET` | `/inseason_free_agents` | Returns `{ free_agents: [...], count, status }`. Query params: `type` (`hitter`\|`pitcher`\|`all`, default `all`), `position` (`C`, `1B`, `2B`, `3B`, `SS`, `OF`, `DH`, `SP`, `RP`), `limit` (default 50, 0 = no limit). |
 | `GET` | `/inseason_free_agents/:player` | Single-player lookup by exact name (case-insensitive). |
@@ -170,8 +171,8 @@ The Lovable app is a standalone web app that calls the Railway API. It displays:
 - **Last-updated timestamp** — from `status.last_updated`.
 
 To modify the Lovable app, open it in the Lovable editor and prompt changes in natural language. The API contract is:
-- `GET /inseason_standings` → `{ standings: [{team_name, projected_finish, total_pts, proj_R, pts_R, rank_R, ...}], status: {last_updated, status, data_date, error_message?, warnings?, sgp_source?, n_free_agents?} }`
-- `GET /inseason_team/{name}` → `{ team, players: [{team_name, player_name, lineup_slot, player_type, AB?, H?, R?, HR?, …, sgp_total?}] }`
+- `GET /inseason_standings?active_only=true|false` → `{ standings: [{team_name, projected_finish, total_pts, proj_R, pts_R, rank_R, ...}], view: "all_rostered"|"active_only", status: {last_updated, status, data_date, error_message?, warnings?, sgp_source?, n_free_agents?} }`. Default is `active_only=false` (all rostered players). Flip to `true` for an active-slot-only view that excludes bench, IL, and minors.
+- `GET /inseason_team/{name}` → `{ team, players: [{team_name, player_name, lineup_slot, roster_status, player_type, AB?, H?, R?, HR?, …, sgp_total?}] }` — `roster_status` is `active`/`bench`/`IL`/`minors`; use it to badge or filter rows on the team drill-down.
 - `GET /inseason_free_agents?type=hitter|pitcher&position=<pos>&limit=50` → `{ free_agents: [{rank_overall, rank_by_type, player_type, Name, Team, positions, AB?, R?, HR?, …, IP?, W?, …, sgp_total}], count, status }`
 
 ## Local development
@@ -213,7 +214,7 @@ The Docker build takes ~5-10 minutes (R package installation). Monitor deploy lo
 ## Known limitations and future work
 
 ### Current limitations
-- **All rostered players are projected** — bench and IL players are included in ROS projections. FanGraphs ROS projections already account for expected playing time (including injury adjustments), so this is a reasonable approximation. A refinement would be to only project starting lineup contributions.
+- **Two projection views, neither perfect** — the pipeline now emits both an "all rostered" projection (which double-counts the ROS stats of stashed players and the bench guys they would displace on return) and an "active-slot only" projection (which gives zero credit for bench/IL/minors contributions). The Lovable dashboard exposes these via the `active_only` toggle. FanGraphs ROS already accounts for expected playing time, so both views are biased in opposite directions. A future refinement can model the drop-when-activated behavior explicitly (see "Planned next steps").
 - **Name matching is fuzzy** — player name matching between ESPN rosters and FanGraphs projections uses normalized names + Levenshtein distance ≤ 2. Most players match, but some edge cases may be missed. Check `n_hitters_matched` and `n_pitchers_matched` in the standings output for coverage.
 - **No roster slot optimization** — the projection sums all rostered players' stats rather than optimizing lineup decisions (e.g. picking the best 5 OF from 7 eligible players).
 - **FanGraphs cookie expiry** — the `FANGRAPHS_COOKIE` and login credentials need periodic refresh.

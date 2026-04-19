@@ -350,9 +350,19 @@ app.post("/run_inseason_update", async (c) => {
 });
 
 // GET /inseason_standings — projected end-of-season standings as JSON
+// Query params:
+//   active_only  "true" → serve the active-slot-only projections
+//                (excludes bench, IL, minors). Default "false" preserves
+//                the legacy "all rostered players" view.
 app.get("/inseason_standings", async (c) => {
+  const activeOnly = String(c.req.query("active_only") || "")
+    .toLowerCase() === "true";
+  const fileName = activeOnly
+    ? "inseason_projected_standings_active.csv"
+    : "inseason_projected_standings.csv";
+
   try {
-    const filePath = join("data", "processed", "inseason_projected_standings.csv");
+    const filePath = join("data", "processed", fileName);
     const content = await fs.readFile(filePath, "utf-8");
     const rows = csvToJson(content);
 
@@ -368,7 +378,11 @@ app.get("/inseason_standings", async (c) => {
       // Status file may not exist yet
     }
 
-    return c.json({ standings: rows, status });
+    return c.json({
+      standings: rows,
+      view: activeOnly ? "active_only" : "all_rostered",
+      status,
+    });
   } catch (error) {
     // If no standings file yet, return status only
     try {

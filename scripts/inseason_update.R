@@ -62,6 +62,26 @@ normalize_name <- function(name) {
     str_trim()
 }
 
+# ESPN lineup slots that count as "active" (anything else is bench/IL/minors).
+ACTIVE_LINEUP_SLOTS <- c(
+  "C", "1B", "2B", "3B", "SS",
+  "LF", "CF", "RF", "OF",
+  "UTIL", "DH",
+  "P", "SP", "RP",
+  "IF", "MI", "CI"
+)
+
+# Classify each roster entry for the active-only projected-standings view.
+classify_roster_status <- function(slot) {
+  case_when(
+    is.na(slot)                   ~ "unknown",
+    slot == "IL"                  ~ "IL",
+    slot == "BE"                  ~ "bench",
+    slot %in% ACTIVE_LINEUP_SLOTS ~ "active",
+    TRUE                          ~ "minors"   # e.g. SLOT_17
+  )
+}
+
 # NL teams (Billiken league is NL-only)
 NL_TEAMS <- c("ATL","LAD","SDP","ARI","NYM","PHI","MIL","STL",
               "CHC","SFG","CIN","COL","PIT","MIA","WSN", NA)
@@ -116,8 +136,15 @@ tryCatch({
   # ================================================================
   message("\n=== Step 2: Fetching ESPN rosters ===")
   rosters <- fetch_espn_rosters(season = current_year, verbose = TRUE)
+  rosters <- rosters %>%
+    mutate(roster_status = classify_roster_status(lineup_slot))
   message(sprintf("Got %d roster entries across %d teams",
                   nrow(rosters), n_distinct(rosters$team_name)))
+
+  status_counts <- rosters %>% count(roster_status)
+  message("Roster status breakdown: ",
+          paste(status_counts$roster_status, status_counts$n,
+                sep = "=", collapse = ", "))
 
   # ================================================================
   # STEP 3 — Download FanGraphs ROS projections
@@ -307,112 +334,117 @@ tryCatch({
   }
 
   # ================================================================
-  # STEP 5 — Aggregate ROS stats by fantasy team
+  # STEPS 5-7 — Aggregate, combine YTD + ROS, rank teams
+  # Wrapped in a helper so we can compute two views:
+  #   * all rostered players  (current behavior)
+  #   * active-slot players   (excludes bench, IL, minors)
   # ================================================================
-  message("\n=== Step 5: Aggregating ROS stats by team ===")
+  message("\n=== Steps 5-7: Projecting standings (all + active-only) ===")
 
-  hitter_ros_by_team <- roster_hitters %>%
-    group_by(team_id, team_name) %>%
-    summarize(
-      ros_AB    = sum(AB, na.rm = TRUE),
-      ros_H_bat = sum(H, na.rm = TRUE),
-      ros_R     = sum(R, na.rm = TRUE),
-      ros_HR    = sum(HR, na.rm = TRUE),
-      ros_RBI   = sum(RBI, na.rm = TRUE),
-      ros_SB    = sum(SB, na.rm = TRUE),
-      n_hitters_matched = n(),
-      .groups = "drop"
-    )
+  project_standings <- function(rh, rp, ytd) {
+    hitter_ros_by_team <- rh %>%
+      group_by(team_id, team_name) %>%
+      summarize(
+        ros_AB    = sum(AB, na.rm = TRUE),
+        ros_H_bat = sum(H, na.rm = TRUE),
+        ros_R     = sum(R, na.rm = TRUE),
+        ros_HR    = sum(HR, na.rm = TRUE),
+        ros_RBI   = sum(RBI, na.rm = TRUE),
+        ros_SB    = sum(SB, na.rm = TRUE),
+        n_hitters_matched = n(),
+        .groups = "drop"
+      )
 
-  pitcher_ros_by_team <- roster_pitchers %>%
-    group_by(team_id, team_name) %>%
-    summarize(
-      ros_IP = sum(IP, na.rm = TRUE),
-      ros_W  = sum(W,  na.rm = TRUE),
-      ros_SV = sum(SV, na.rm = TRUE),
-      ros_SO = sum(SO, na.rm = TRUE),
-      ros_ER = sum(ER, na.rm = TRUE),
-      ros_BB = sum(BB, na.rm = TRUE),
-      ros_HA = sum(HA, na.rm = TRUE),
-      n_pitchers_matched = n(),
-      .groups = "drop"
-    )
+    pitcher_ros_by_team <- rp %>%
+      group_by(team_id, team_name) %>%
+      summarize(
+        ros_IP = sum(IP, na.rm = TRUE),
+        ros_W  = sum(W,  na.rm = TRUE),
+        ros_SV = sum(SV, na.rm = TRUE),
+        ros_SO = sum(SO, na.rm = TRUE),
+        ros_ER = sum(ER, na.rm = TRUE),
+        ros_BB = sum(BB, na.rm = TRUE),
+        ros_HA = sum(HA, na.rm = TRUE),
+        n_pitchers_matched = n(),
+        .groups = "drop"
+      )
 
-  # ================================================================
-  # STEP 6 — Combine YTD + ROS = projected end-of-season totals
-  # ================================================================
-  message("\n=== Step 6: Computing projected end-of-season totals ===")
+    projected <- ytd %>%
+      left_join(hitter_ros_by_team,  by = c("team_id", "team_name")) %>%
+      left_join(pitcher_ros_by_team, by = c("team_id", "team_name")) %>%
+      mutate(across(starts_with("ros_"), ~replace_na(.x, 0))) %>%
+      mutate(across(c(n_hitters_matched, n_pitchers_matched),
+                    ~replace_na(.x, 0L))) %>%
+      mutate(
+        # Counting stats: simple addition
+        proj_R   = R   + ros_R,
+        proj_HR  = HR  + ros_HR,
+        proj_RBI = RBI + ros_RBI,
+        proj_SB  = SB  + ros_SB,
+        proj_W   = W   + ros_W,
+        proj_SV  = SV  + ros_SV,
+        proj_SO  = SO  + ros_SO,
 
-  projected <- ytd_standings %>%
-    left_join(hitter_ros_by_team,  by = c("team_id", "team_name")) %>%
-    left_join(pitcher_ros_by_team, by = c("team_id", "team_name")) %>%
-    mutate(across(starts_with("ros_"), ~replace_na(.x, 0))) %>%
-    mutate(across(c(n_hitters_matched, n_pitchers_matched),
-                  ~replace_na(.x, 0L))) %>%
-    mutate(
-      # Counting stats: simple addition
-      proj_R   = R   + ros_R,
-      proj_HR  = HR  + ros_HR,
-      proj_RBI = RBI + ros_RBI,
-      proj_SB  = SB  + ros_SB,
-      proj_W   = W   + ros_W,
-      proj_SV  = SV  + ros_SV,
-      proj_SO  = SO  + ros_SO,
+        # Rate stats: recompute from components
+        proj_H_total  = H  + ros_H_bat,
+        proj_AB_total = AB + ros_AB,
+        proj_AVG = if_else(proj_AB_total > 0,
+                           proj_H_total / proj_AB_total, 0),
 
-      # Rate stats: recompute from components
-      proj_H_total  = H  + ros_H_bat,
-      proj_AB_total = AB + ros_AB,
-      proj_AVG = if_else(proj_AB_total > 0,
-                         proj_H_total / proj_AB_total, 0),
+        proj_ER_total = ER + ros_ER,
+        proj_IP_total = IP + ros_IP,
+        proj_ERA = if_else(proj_IP_total > 0,
+                           proj_ER_total * 9 / proj_IP_total, 99.99),
 
-      proj_ER_total = ER + ros_ER,
-      proj_IP_total = IP + ros_IP,
-      proj_ERA = if_else(proj_IP_total > 0,
-                         proj_ER_total * 9 / proj_IP_total, 99.99),
+        proj_BB_total = BB + ros_BB,
+        proj_HA_total = HA + ros_HA,
+        proj_WHIP = if_else(proj_IP_total > 0,
+                            (proj_BB_total + proj_HA_total) / proj_IP_total,
+                            9.99)
+      )
 
-      proj_BB_total = BB + ros_BB,
-      proj_HA_total = HA + ros_HA,
-      proj_WHIP = if_else(proj_IP_total > 0,
-                          (proj_BB_total + proj_HA_total) / proj_IP_total,
-                          9.99)
-    )
+    higher_better <- c("R", "HR", "RBI", "SB", "AVG", "W", "SV", "SO")
+    lower_better  <- c("ERA", "WHIP")
+    categories    <- c(higher_better, lower_better)
 
-  # ================================================================
-  # STEP 7 — Rank teams and compute roto points
-  # ================================================================
-  message("\n=== Step 7: Ranking teams and computing roto points ===")
+    for (cat in categories) {
+      proj_col <- paste0("proj_", cat)
+      rank_col <- paste0("rank_", cat)
+      pts_col  <- paste0("pts_",  cat)
 
-  higher_better <- c("R", "HR", "RBI", "SB", "AVG", "W", "SV", "SO")
-  lower_better  <- c("ERA", "WHIP")
-  categories    <- c(higher_better, lower_better)
-
-  for (cat in categories) {
-    proj_col <- paste0("proj_", cat)
-    rank_col <- paste0("rank_", cat)
-    pts_col  <- paste0("pts_",  cat)
-
-    if (cat %in% higher_better) {
-      projected <- projected %>%
-        mutate(
-          !!rank_col := rank(-get(proj_col), ties.method = "average"),
-          !!pts_col  := N_TEAMS + 1 - get(rank_col)
-        )
-    } else {
-      projected <- projected %>%
-        mutate(
-          !!rank_col := rank(get(proj_col), ties.method = "average"),
-          !!pts_col  := N_TEAMS + 1 - get(rank_col)
-        )
+      if (cat %in% higher_better) {
+        projected <- projected %>%
+          mutate(
+            !!rank_col := rank(-get(proj_col), ties.method = "average"),
+            !!pts_col  := N_TEAMS + 1 - get(rank_col)
+          )
+      } else {
+        projected <- projected %>%
+          mutate(
+            !!rank_col := rank(get(proj_col), ties.method = "average"),
+            !!pts_col  := N_TEAMS + 1 - get(rank_col)
+          )
+      }
     }
+
+    pts_cols <- paste0("pts_", categories)
+    projected %>%
+      mutate(
+        total_pts        = rowSums(across(all_of(pts_cols))),
+        projected_finish = rank(-total_pts, ties.method = "min")
+      ) %>%
+      arrange(projected_finish)
   }
 
-  pts_cols <- paste0("pts_", categories)
-  projected <- projected %>%
-    mutate(
-      total_pts        = rowSums(across(all_of(pts_cols))),
-      projected_finish = rank(-total_pts, ties.method = "min")
-    ) %>%
-    arrange(projected_finish)
+  # View 1: all rostered players (legacy behavior)
+  projected <- project_standings(roster_hitters, roster_pitchers, ytd_standings)
+
+  # View 2: active-slot players only (excludes bench, IL, minors)
+  roster_hitters_active  <- roster_hitters  %>% filter(roster_status == "active")
+  roster_pitchers_active <- roster_pitchers %>% filter(roster_status == "active")
+  projected_active <- project_standings(
+    roster_hitters_active, roster_pitchers_active, ytd_standings
+  )
 
   # ================================================================
   # STEP 8 — Output
@@ -420,26 +452,33 @@ tryCatch({
   message("\n=== Step 8: Writing output files ===")
   dir.create("data/processed", showWarnings = FALSE, recursive = TRUE)
 
-  # Standings
-  standings_out <- projected %>%
-    select(
+  # Standings — "all rostered" view (legacy default)
+  standings_cols <- function(df) {
+    df %>% select(
       team_id, team_name, projected_finish, total_pts,
       starts_with("proj_"), starts_with("rank_"), starts_with("pts_"),
       n_hitters_matched, n_pitchers_matched
     )
-  write_csv(standings_out,
+  }
+
+  write_csv(standings_cols(projected),
             "data/processed/inseason_projected_standings.csv")
   message("Wrote data/processed/inseason_projected_standings.csv")
 
-  # Player-level detail
+  write_csv(standings_cols(projected_active),
+            "data/processed/inseason_projected_standings_active.csv")
+  message("Wrote data/processed/inseason_projected_standings_active.csv")
+
+  # Player-level detail (always includes every rostered player plus
+  # roster_status so the dashboard can filter/highlight bench/IL/minors)
   detail_hitters <- roster_hitters %>%
-    select(team_id, team_name, player_name, lineup_slot,
+    select(team_id, team_name, player_name, lineup_slot, roster_status,
            any_of(c("AB", "H", "R", "HR", "RBI", "SB")),
            any_of(c("sgp_total", "sgp_hitting", "sgp_pitching"))) %>%
     mutate(player_type = "hitter")
 
   detail_pitchers <- roster_pitchers %>%
-    select(team_id, team_name, player_name, lineup_slot,
+    select(team_id, team_name, player_name, lineup_slot, roster_status,
            any_of(c("IP", "W", "SV", "SO", "ER", "BB", "HA")),
            any_of(c("sgp_total", "sgp_hitting", "sgp_pitching"))) %>%
     mutate(player_type = "pitcher")
@@ -472,8 +511,13 @@ tryCatch({
 
   # --- Summary ---
   message("\n=== In-season update complete! ===")
-  message("\nProjected Standings:")
+  message("\nProjected Standings (all rostered players):")
   projected %>%
+    select(projected_finish, team_name, total_pts) %>%
+    pwalk(~ message(sprintf("  %2d. %-25s %.1f pts", ..1, ..2, ..3)))
+
+  message("\nProjected Standings (active-slot players only):")
+  projected_active %>%
     select(projected_finish, team_name, total_pts) %>%
     pwalk(~ message(sprintf("  %2d. %-25s %.1f pts", ..1, ..2, ..3)))
 
