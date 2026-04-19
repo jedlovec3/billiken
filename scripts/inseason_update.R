@@ -37,7 +37,8 @@ suppressPackageStartupMessages({
 # =====================================================================
 
 write_status <- function(status, error_message = NULL, warnings = NULL,
-                         data_date = Sys.Date()) {
+                         data_date = Sys.Date(),
+                         extras = list()) {
   out <- list(
     last_updated  = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
     status        = status,
@@ -45,6 +46,7 @@ write_status <- function(status, error_message = NULL, warnings = NULL,
   )
   if (!is.null(error_message)) out$error_message <- error_message
   if (!is.null(warnings) && length(warnings) > 0) out$warnings <- warnings
+  for (nm in names(extras)) out[[nm]] <- extras[[nm]]
   dir.create("data/processed", showWarnings = FALSE, recursive = TRUE)
   write_json(out, "data/processed/inseason_status.json",
              auto_unbox = TRUE, pretty = TRUE)
@@ -84,6 +86,7 @@ fetch_espn_standings <- .standings_env$fetch_espn_standings
 
 source("scripts/fetch_espn_rosters.R")
 source("scripts/download_ros_projections.R")
+source("scripts/inseason_free_agents.R")
 
 # =====================================================================
 # Main pipeline (wrapped in error handler)
@@ -269,6 +272,41 @@ tryCatch({
   }
 
   # ================================================================
+  # STEP 4b — Score rostered players (ROS SGP) for team detail + recs
+  # ================================================================
+  message("\n=== Step 4b: Scoring rostered players (ROS SGP) ===")
+
+  rostered_scores <- score_rostered_players(roster_hitters, roster_pitchers)
+  roster_hitters  <- rostered_scores$hitters
+  roster_pitchers <- rostered_scores$pitchers
+  sgp_source <- rostered_scores$source
+  message(sprintf("SGP source: %s", sgp_source))
+
+  # ================================================================
+  # STEP 4c — Compute free-agent rankings
+  # ================================================================
+  message("\n=== Step 4c: Computing free-agent rankings ===")
+
+  fa_result <- compute_inseason_free_agents(
+    ros_hitters              = ros_hitters,
+    ros_pitchers             = ros_pitchers,
+    rostered_names_normalized = unique(roster_norm$name_normalized),
+    positions_path           = "data/raw/positions_latest.csv",
+    normalize_fn             = normalize_name
+  )
+  free_agents <- fa_result$free_agents
+  message(sprintf("Identified %d free agents (%d hitters, %d pitchers)",
+                  fa_result$n_free_agents,
+                  sum(free_agents$player_type == "hitter"),
+                  sum(free_agents$player_type == "pitcher")))
+
+  if (fa_result$source == "fallback") {
+    w <- "category_unit_values.csv missing; free-agent ranking is using z-score fallback."
+    message("WARNING: ", w)
+    pipeline_warnings <- c(pipeline_warnings, w)
+  }
+
+  # ================================================================
   # STEP 5 — Aggregate ROS stats by fantasy team
   # ================================================================
   message("\n=== Step 5: Aggregating ROS stats by team ===")
@@ -396,16 +434,19 @@ tryCatch({
   # Player-level detail
   detail_hitters <- roster_hitters %>%
     select(team_id, team_name, player_name, lineup_slot,
-           any_of(c("AB", "H", "R", "HR", "RBI", "SB"))) %>%
+           any_of(c("AB", "H", "R", "HR", "RBI", "SB")),
+           any_of(c("sgp_total", "sgp_hitting", "sgp_pitching"))) %>%
     mutate(player_type = "hitter")
 
   detail_pitchers <- roster_pitchers %>%
     select(team_id, team_name, player_name, lineup_slot,
-           any_of(c("IP", "W", "SV", "SO", "ER", "BB", "HA"))) %>%
+           any_of(c("IP", "W", "SV", "SO", "ER", "BB", "HA")),
+           any_of(c("sgp_total", "sgp_hitting", "sgp_pitching"))) %>%
     mutate(player_type = "pitcher")
 
   team_detail <- bind_rows(detail_hitters, detail_pitchers) %>%
     arrange(team_name, player_type, desc(coalesce(
+      if ("sgp_total" %in% names(.)) sgp_total else NULL,
       if ("HR" %in% names(.)) HR else NULL,
       if ("SO" %in% names(.)) SO else NULL,
       0
@@ -414,10 +455,20 @@ tryCatch({
   write_csv(team_detail, "data/processed/inseason_team_details.csv")
   message("Wrote data/processed/inseason_team_details.csv")
 
+  # ================================================================
+  # STEP 9 — Write free-agent rankings
+  # ================================================================
+  write_csv(free_agents, "data/processed/inseason_free_agents.csv")
+  message("Wrote data/processed/inseason_free_agents.csv")
+
   # Status
   write_status("success",
                warnings = if (length(pipeline_warnings) > 0)
-                 pipeline_warnings else NULL)
+                 pipeline_warnings else NULL,
+               extras = list(
+                 sgp_source    = sgp_source,
+                 n_free_agents = fa_result$n_free_agents
+               ))
 
   # --- Summary ---
   message("\n=== In-season update complete! ===")

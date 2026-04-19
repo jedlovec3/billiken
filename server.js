@@ -417,6 +417,115 @@ app.get("/inseason_team/:team", async (c) => {
   }
 });
 
+// GET /inseason_free_agents — ranked free agents (players not on any roster)
+// Query params:
+//   type     hitter|pitcher|all (default all)
+//   position optional eligibility filter (e.g. "C", "1B", "OF", "SP", "RP")
+//   limit    max rows to return (default 50, 0 = no limit)
+app.get("/inseason_free_agents", async (c) => {
+  try {
+    const filePath = join(
+      "data", "processed", "inseason_free_agents.csv"
+    );
+    const content = await fs.readFile(filePath, "utf-8");
+    const rows = csvToJson(content);
+
+    const type = (c.req.query("type") || "all").toLowerCase();
+    const position = c.req.query("position");
+    const limitRaw = c.req.query("limit");
+    const limit = limitRaw === undefined ? 50 : Number(limitRaw);
+
+    let filtered = rows;
+    if (type === "hitter" || type === "pitcher") {
+      filtered = filtered.filter((r) => r.player_type === type);
+    }
+    if (position) {
+      const needle = String(position).toUpperCase();
+      filtered = filtered.filter((r) => {
+        if (!r.positions) return false;
+        const tokens = String(r.positions)
+          .toUpperCase()
+          .split("|")
+          .map((s) => s.trim());
+        return tokens.includes(needle);
+      });
+    }
+
+    // Preserve the precomputed ranks from the CSV. Rewrite rank_by_type when
+    // the user filters by position so the dashboard displays 1..N within the
+    // visible list.
+    filtered = filtered.map((r, i) => ({ ...r, rank_filtered: i + 1 }));
+
+    if (Number.isFinite(limit) && limit > 0) {
+      filtered = filtered.slice(0, limit);
+    }
+
+    // Attach status metadata (same pattern as /inseason_standings)
+    let status = null;
+    try {
+      const statusContent = await fs.readFile(
+        join("data", "processed", "inseason_status.json"),
+        "utf-8"
+      );
+      status = JSON.parse(statusContent);
+    } catch (_) {
+      // status is optional
+    }
+
+    return c.json({ free_agents: filtered, count: filtered.length, status });
+  } catch (error) {
+    try {
+      const statusContent = await fs.readFile(
+        join("data", "processed", "inseason_status.json"),
+        "utf-8"
+      );
+      return c.json(
+        { error: "No free-agent data yet", status: JSON.parse(statusContent) },
+        { status: 404 }
+      );
+    } catch (_) {
+      return c.json(
+        {
+          error:
+            "No in-season free-agent data available. Run /run_inseason_update first.",
+        },
+        { status: 404 }
+      );
+    }
+  }
+});
+
+// GET /inseason_free_agents/:player — single player lookup
+app.get("/inseason_free_agents/:player", async (c) => {
+  try {
+    const playerParam = decodeURIComponent(c.req.param("player")).toLowerCase();
+    const filePath = join(
+      "data", "processed", "inseason_free_agents.csv"
+    );
+    const content = await fs.readFile(filePath, "utf-8");
+    const rows = csvToJson(content);
+
+    const match = rows.find(
+      (r) => r.Name && String(r.Name).toLowerCase() === playerParam
+    );
+    if (!match) {
+      return c.json(
+        { error: `No free-agent match for '${playerParam}'` },
+        { status: 404 }
+      );
+    }
+    return c.json({ player: match });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          "Free-agent data not available. Run /run_inseason_update first.",
+      },
+      { status: 404 }
+    );
+  }
+});
+
 // GET /inseason_status — pipeline health check
 app.get("/inseason_status", async (c) => {
   try {

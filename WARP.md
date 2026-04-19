@@ -32,6 +32,8 @@ The RStudio project file `billiken.Rproj` anchors the working directory at the r
 - `POST /run_inseason_update` — runs `scripts/inseason_update.R` (daily in-season pipeline)
 - `GET /inseason_standings` — serves projected end-of-season standings as JSON
 - `GET /inseason_team/:team` — serves player-level ROS projections for a specific team
+- `GET /inseason_free_agents` — serves ranked best-available players (not on any Billiken roster). Query params: `type=hitter|pitcher|all`, `position=C|1B|2B|3B|SS|OF|DH|SP|RP`, `limit` (default 50)
+- `GET /inseason_free_agents/:player` — single free-agent lookup by name
 - `GET /inseason_status` — pipeline health/status check
 - `GET /health` — health check
 
