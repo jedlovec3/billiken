@@ -240,8 +240,13 @@ tryCatch({
                   nrow(roster_hitters)))
 
   # --- Pitchers ---
+  # Note: ERA + WHIP are kept on each player so the team-detail CSV (and the
+  # Lovable team drill-down) can show per-player rate stats. They are NOT used
+  # in the team-level standings projection — that uses ER/IP/BB/HA components.
   pitcher_proj_cols <- intersect(
-    c("name_normalized", "Name", "Team", "IP", "W", "SV", "SO", "ER", "BB", "HA"),
+    c("name_normalized", "Name", "Team",
+      "IP", "W", "SV", "SO", "ER", "BB", "HA",
+      "ERA", "WHIP"),
     names(ros_pitchers)
   )
 
@@ -479,7 +484,7 @@ tryCatch({
 
   detail_pitchers <- roster_pitchers %>%
     select(team_id, team_name, player_name, lineup_slot, roster_status,
-           any_of(c("IP", "W", "SV", "SO", "ER", "BB", "HA")),
+           any_of(c("IP", "W", "SV", "SO", "ER", "BB", "HA", "ERA", "WHIP")),
            any_of(c("sgp_total", "sgp_hitting", "sgp_pitching"))) %>%
     mutate(player_type = "pitcher")
 

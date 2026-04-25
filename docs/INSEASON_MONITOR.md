@@ -172,7 +172,7 @@ The Lovable app is a standalone web app that calls the Railway API. It displays:
 
 To modify the Lovable app, open it in the Lovable editor and prompt changes in natural language. The API contract is:
 - `GET /inseason_standings?active_only=true|false` → `{ standings: [{team_name, projected_finish, total_pts, proj_R, pts_R, rank_R, ...}], view: "all_rostered"|"active_only", status: {last_updated, status, data_date, error_message?, warnings?, sgp_source?, n_free_agents?} }`. Default is `active_only=false` (all rostered players). Flip to `true` for an active-slot-only view that excludes bench, IL, and minors.
-- `GET /inseason_team/{name}` → `{ team, players: [{team_name, player_name, lineup_slot, roster_status, player_type, AB?, H?, R?, HR?, …, sgp_total?}] }` — `roster_status` is `active`/`bench`/`IL`/`minors`; use it to badge or filter rows on the team drill-down.
+- `GET /inseason_team/{name}` → `{ team, players: [{team_name, player_name, lineup_slot, roster_status, player_type, AB?, H?, R?, HR?, RBI?, SB?, IP?, W?, SV?, SO?, ER?, BB?, HA?, ERA?, WHIP?, sgp_total?}] }` — hitter rows carry counting stats; pitcher rows carry counting stats plus per-player projected `ERA` and `WHIP`. `roster_status` is `active`/`bench`/`IL`/`minors`; use it to badge or filter rows on the team drill-down.
 - `GET /inseason_free_agents?type=hitter|pitcher&position=<pos>&limit=50` → `{ free_agents: [{rank_overall, rank_by_type, player_type, Name, Team, positions, AB?, R?, HR?, …, IP?, W?, …, sgp_total}], count, status }`
 
 ## Local development
