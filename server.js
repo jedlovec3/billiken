@@ -74,7 +74,17 @@ function getLatestFile(dirPath) {
   }
 }
 
-// Parse CSV text into an array of objects (header row → keys)
+// Parse CSV text into an array of objects (header row → keys).
+//
+// Type coercion rules:
+//   * Empty cell (or literal NA / NaN)            → null
+//   * Numeric-looking cell                         → number
+//   * Anything else                                → string
+//
+// Without the empty-string guard, `Number("") === 0` would silently
+// rewrite blank string cells (e.g. an empty `shed_names` or a missing
+// `age_2026`) into the integer 0, which breaks any frontend that does
+// `row.shed_names.split("|")` or treats `age_2026` as a real age.
 function csvToJson(csv) {
   const lines = csv.trim().split("\n");
   if (lines.length < 2) return [];
@@ -83,8 +93,13 @@ function csvToJson(csv) {
     const vals = line.split(",").map((v) => v.trim().replace(/^"|"$/g, ""));
     const obj = {};
     headers.forEach((h, i) => {
-      const num = Number(vals[i]);
-      obj[h] = isNaN(num) ? vals[i] : num;
+      const raw = vals[i];
+      if (raw === undefined || raw === "" || raw === "NA" || raw === "NaN") {
+        obj[h] = null;
+      } else {
+        const num = Number(raw);
+        obj[h] = Number.isNaN(num) ? raw : num;
+      }
     });
     return obj;
   });
