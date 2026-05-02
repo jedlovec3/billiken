@@ -74,10 +74,13 @@ The core orchestrator. Runs all 9 steps of the projection pipeline:
    - `ERA = (ER_ytd + ER_ros) * 9 / (IP_ytd + IP_ros)`
    - `WHIP = (BB_ytd + BB_ros + HA_ytd + HA_ros) / (IP_ytd + IP_ros)`
 7. **Rank and score** — ranks teams 1–10 in each of 10 categories (R, HR, RBI, SB, AVG, W, SV, SO, ERA, WHIP). Roto points = `N_TEAMS + 1 - rank`. Total points = sum across categories.
-8. **Output standings + team details** — writes:
-   - `data/processed/inseason_projected_standings.csv` — team-level projections using **all** rostered players (bench + IL + minors included)
-   - `data/processed/inseason_projected_standings_active.csv` — same schema, but computed only from players in **active** ESPN lineup slots (excludes bench, IL, minors). Use this view to avoid double-counting the ROS stats of stashed players that would displace an active player upon return.
-   - `data/processed/inseason_team_details.csv` — player-level ROS projection breakdown by team, including `sgp_total` (per‑player ROS SGP) and `roster_status` (`active` / `bench` / `IL` / `minors`)
+8. **Output standings + team details + benchmarks** — writes:
+   - `data/processed/inseason_projected_standings.csv` — team-level projections using **all** rostered players (bench + IL + minors included). Double-counts stashed players and the active fill-ins they'd displace; useful as an upper bound.
+   - `data/processed/inseason_projected_standings_active.csv` — same schema, but computed only from players in **active** ESPN lineup slots. Excludes bench, IL, minors entirely; useful as a lower bound.
+   - `data/processed/inseason_projected_standings_prorated.csv` — same schema, but each stashed player is paired with a fill-in and the fill-in's counting stats are scaled by `(1 - f)` where `f = ros_pt / position_benchmark` is the stashed player's expected on-roster fraction. This is the new default served to the dashboard.
+   - `data/processed/inseason_team_details.csv` — player-level ROS projection breakdown by team, including `sgp_total` (per‑player ROS SGP), `roster_status` (`active` / `bench` / `IL` / `minors`), `pt_fraction`, `primary_position` (hitters) or `pitcher_role` (pitchers), `pt_benchmark`, `displacement_role` (e.g. `stashed_by:<player>` or `displaces:<player>`), and `effective_share` (`1.0` for stashed and unaffected actives; `1 - f` for fill-ins).
+   - `data/processed/inseason_pt_benchmarks.csv` — league-wide playing-time benchmarks per position (hitter PA medians) and per pitcher role (SP/RP IP medians) used by the prorated view.
+   - `data/processed/inseason_pairings.csv` — audit log of every (stashed_player, fill_in_player, f) triple used by the prorated view.
 9. **Output free agents + status** — writes:
    - `data/processed/inseason_free_agents.csv` — ranked free‑agent pool with ROS SGP and position eligibility
    - `data/processed/inseason_status.json` — pipeline status (`success`/`error`, `last_updated`, `warnings`, `error_message`, `sgp_source` = `unit_values`\|`fallback`, `n_free_agents`)
@@ -93,7 +96,8 @@ All served by `server.js` (Bun/Hono on Railway).
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/run_inseason_update` | Triggers `scripts/inseason_update.R`. Returns 409 if an R script is already running. |
-| `GET` | `/inseason_standings` | Returns `{ standings: [...], view, status: {...} }` from the CSV + status JSON. Query param `active_only=true` serves the active-slot-only projection (default `false` = all rostered). |
+| `GET` | `/inseason_standings` | Returns `{ standings: [...], view, status: {...} }` from the CSV + status JSON. Query param `view=all\|active\|prorated` selects the projection (default `prorated`). Legacy `active_only=true` is accepted as an alias for `view=active`. |
+| `GET` | `/inseason_pt_benchmarks` | Returns `{ rows, hitters, pitchers }` with the playing-time benchmarks used by the prorated view. `hitters` is `{C, 1B, 2B, 3B, SS, OF, DH}` mapped to median PA; `pitchers` is `{SP, RP}` mapped to median IP. |
 | `GET` | `/inseason_team/:team` | Returns `{ team, players: [...] }` filtered by team name (case-insensitive substring match). |
 | `GET` | `/inseason_free_agents` | Returns `{ free_agents: [...], count, status }`. Query params: `type` (`hitter`\|`pitcher`\|`all`, default `all`), `position` (`C`, `1B`, `2B`, `3B`, `SS`, `OF`, `DH`, `SP`, `RP`), `limit` (default 50, 0 = no limit). |
 | `GET` | `/inseason_free_agents/:player` | Single-player lookup by exact name (case-insensitive). |
@@ -147,10 +151,19 @@ Columns:
 
 Unit values come from `data/processed/category_unit_values.csv` + `category_value_scaling.csv`, which are refreshed by the pre‑freeze pipeline (`standings_gained_points.R`) not the in‑season one. In practice the values change very slowly across seasons, so using the last‑committed version mid‑season is fine. If those files are missing on Railway at runtime, the free‑agent ranker falls back to a per‑stat z‑score composite and `status.sgp_source` in `inseason_status.json` flips from `unit_values` to `fallback` (surfaced as a dashboard warning).
 
+## Prorated standings view
+The "prorated" view models the fact that a stashed player and the active fill-in occupying their roster spot can't both fully contribute over the rest of the season. FanGraphs ROS already encodes how much each player will produce given their expected return time, so we derive an **on-roster fraction** `f = ros_pt / position_benchmark` (capped at `[0, 1]`) from those projections.
+For each stashed player (`bench` / `IL` / `minors` — in Billiken, bench is treated as a stash because it isn't part of the active rotation), the pipeline pairs them with one active fill-in and scales the fill-in's counting stats by `(1 - f)`. Stashed players keep their full ROS line. Rate stats (AVG, ERA, WHIP) handle proration naturally because they're recomputed from prorated counting components.
+### Pairing logic (`scripts/inseason_proration.R`)
+* **Hitters — slot-eligibility-aware.** A slot-eligibility map encodes which Billiken slots each position can fill (e.g. `2B → {2B, MI, UTIL}`, `OF → {OF, UTIL}`, `C → {C, UTIL}`). For each stashed hitter (descending `pt_fraction`), greedy-pair with the lowest-`sgp_total` available hitter currently occupying any slot the stashed player is eligible to fill. Once paired, that fill-in is removed from the candidate pool.
+* **Pitchers — single pool, role-specific `f`.** All nine Billiken pitcher slots are interchangeable, so SP and RP share one pairing pool. Each stashed pitcher's `f` is computed against their own role's benchmark (SP vs RP). The fill-in's role doesn't enter the proration formula — only the stashed player's `f` does.
+* **Leftovers.** If a team has more stashed than available in a bucket (very rare), the unpaired stashed players keep their full ROS with no fill-in subtraction.
+### Position benchmarks
+Computed once per pipeline run from the league-wide NL ROS pool (not just rostered players, to avoid bias). Hitter benchmarks use median PA among the top-K NL hitters at each primary position (K matches NL starter counts: 15 catchers, 15 first basemen, ..., 45 outfielders). Pitcher benchmarks use median IP among the top 75 SPs (5 per team) and top 120 RPs (8 per team). SP/RP split is `GS/G ≥ 0.5`, with a starter-shaped IP override (any RP-tagged pitcher projecting ≥ 80 IP becomes SP).
+### Why greedy and not full ILP
+A per-team integer linear program would produce the optimal active-roster assignment, but the greedy heuristic is correct for the unambiguous cases (stashed catcher → catcher fill-in, stashed SS-only → SS/MI fill-in) which dominate real rosters. Multi-eligibility ambiguities at the margin (e.g. a 2B/OF stashed player) tend to wash out because the candidate fill-ins typically have similar `sgp_total`. The pairing step is encapsulated behind a `(stashed, fill_in, f)` triple interface, so swapping in an ILP later is a local change.
 ## Transaction recommendations (planned)
-
 The free‑agent feature is stage 1 of a broader goal: recommend concrete drop/add moves that improve a team's projected standings. The current output already contains everything that recommendation engine will need:
-
 - `inseason_team_details.csv` carries per-rostered-player `sgp_total` (ROS SGP).
 - `inseason_free_agents.csv` carries per-FA `sgp_total` + position eligibility.
 
@@ -171,8 +184,9 @@ The Lovable app is a standalone web app that calls the Railway API. It displays:
 - **Last-updated timestamp** — from `status.last_updated`.
 
 To modify the Lovable app, open it in the Lovable editor and prompt changes in natural language. The API contract is:
-- `GET /inseason_standings?active_only=true|false` → `{ standings: [{team_name, projected_finish, total_pts, proj_R, pts_R, rank_R, ...}], view: "all_rostered"|"active_only", status: {last_updated, status, data_date, error_message?, warnings?, sgp_source?, n_free_agents?} }`. Default is `active_only=false` (all rostered players). Flip to `true` for an active-slot-only view that excludes bench, IL, and minors.
-- `GET /inseason_team/{name}` → `{ team, players: [{team_name, player_name, lineup_slot, roster_status, player_type, AB?, H?, R?, HR?, RBI?, SB?, IP?, W?, SV?, SO?, ER?, BB?, HA?, ERA?, WHIP?, sgp_total?}] }` — hitter rows carry counting stats; pitcher rows carry counting stats plus per-player projected `ERA` and `WHIP`. `roster_status` is `active`/`bench`/`IL`/`minors`; use it to badge or filter rows on the team drill-down.
+- `GET /inseason_standings?view=all|active|prorated` → `{ standings: [{team_name, projected_finish, total_pts, proj_R, pts_R, rank_R, ...}], view: "all_rostered"|"active_only"|"prorated", status: {last_updated, status, data_date, error_message?, warnings?, sgp_source?, n_free_agents?, sp_benchmark_ip?, rp_benchmark_ip?, n_hitter_pairings?, n_pitcher_pairings?} }`. Default is `view=prorated` (the playing-time-prorated view). Use `view=all` for the legacy double-counted view or `view=active` for the active-slot-only view. The legacy `active_only=true` query param is still accepted as an alias for `view=active`.
+- `GET /inseason_team/{name}` → `{ team, players: [{team_name, player_name, lineup_slot, roster_status, player_type, primary_position?, pitcher_role?, pt_benchmark?, pt_fraction?, displacement_role?, effective_share?, AB?, H?, R?, HR?, RBI?, SB?, PA?, IP?, W?, SV?, SO?, ER?, BB?, HA?, ERA?, WHIP?, sgp_total?}] }` — hitter rows carry counting stats + PA + primary position; pitcher rows carry counting stats + ERA/WHIP + role. `roster_status` is `active`/`bench`/`IL`/`minors`. `displacement_role` labels rows that participate in the prorated view: `stashed_by:<fill_in_player>` for stashed players, `displaces:<stashed_player>` for active fill-ins; `effective_share` is `1.0` for everyone except prorated fill-ins, who get `1 - f`. Use it to badge or fade rows on the team drill-down.
+- `GET /inseason_pt_benchmarks` → `{ rows, hitters: {C, 1B, 2B, 3B, SS, OF, DH}, pitchers: {SP, RP} }` — league-wide playing-time benchmarks (median PA / median IP) used by the prorated view; surface as tooltips so users can see what a "full-time" hitter / SP / RP looks like.
 - `GET /inseason_free_agents?type=hitter|pitcher&position=<pos>&limit=50` → `{ free_agents: [{rank_overall, rank_by_type, player_type, Name, Team, positions, AB?, R?, HR?, …, IP?, W?, …, sgp_total}], count, status }`
 
 ## Local development
@@ -214,9 +228,10 @@ The Docker build takes ~5-10 minutes (R package installation). Monitor deploy lo
 ## Known limitations and future work
 
 ### Current limitations
-- **Two projection views, neither perfect** — the pipeline now emits both an "all rostered" projection (which double-counts the ROS stats of stashed players and the bench guys they would displace on return) and an "active-slot only" projection (which gives zero credit for bench/IL/minors contributions). The Lovable dashboard exposes these via the `active_only` toggle. FanGraphs ROS already accounts for expected playing time, so both views are biased in opposite directions. A future refinement can model the drop-when-activated behavior explicitly (see "Planned next steps").
+- **Three projection views; prorated is now the default.** The `all` view still double-counts stashed players, and the `active` view still ignores them entirely. The new `prorated` view is the recommended default and bounded by the other two.
+- **Greedy pairing, not ILP.** The prorated view uses a greedy slot-eligibility-aware pairing rather than a full ILP. Multi-eligibility ambiguities (e.g. a 2B/OF stashed player) may pair with a marginally-different fill-in than the optimal choice; the practical impact is small. See `scripts/inseason_proration.R` and the "Why greedy and not full ILP" note above.
+- **Pitcher SP/RP threshold is heuristic.** Classification is `GS/G ≥ 0.5` with an `IP ≥ 80` override; openers and unusual usage patterns may bucket awkwardly.
 - **Name matching is fuzzy** — player name matching between ESPN rosters and FanGraphs projections uses normalized names + Levenshtein distance ≤ 2. Most players match, but some edge cases may be missed. Check `n_hitters_matched` and `n_pitchers_matched` in the standings output for coverage.
-- **No roster slot optimization** — the projection sums all rostered players' stats rather than optimizing lineup decisions (e.g. picking the best 5 OF from 7 eligible players).
 - **FanGraphs cookie expiry** — the `FANGRAPHS_COOKIE` and login credentials need periodic refresh.
 
 ### Planned next steps

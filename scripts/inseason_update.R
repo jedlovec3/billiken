@@ -8,8 +8,12 @@
 #   3. FanGraphs rest-of-season projections (per player)
 #
 # Outputs:
-#   data/processed/inseason_projected_standings.csv
+#   data/processed/inseason_projected_standings.csv          (all rostered)
+#   data/processed/inseason_projected_standings_active.csv   (active-slot only)
+#   data/processed/inseason_projected_standings_prorated.csv (playing-time prorated)
 #   data/processed/inseason_team_details.csv
+#   data/processed/inseason_pt_benchmarks.csv
+#   data/processed/inseason_pairings.csv                     (per-team stash/fill-in audit)
 #   data/processed/inseason_status.json
 
 # --- Working directory ---
@@ -107,6 +111,7 @@ fetch_espn_standings <- .standings_env$fetch_espn_standings
 source("scripts/fetch_espn_rosters.R")
 source("scripts/download_ros_projections.R")
 source("scripts/inseason_free_agents.R")
+source("scripts/inseason_proration.R")
 
 # =====================================================================
 # Main pipeline (wrapped in error handler)
@@ -197,8 +202,11 @@ tryCatch({
     mutate(name_normalized = normalize_name(player_name))
 
   # --- Hitters ---
+  # PA is kept so the prorated pipeline can compute pt_fraction = PA / benchmark.
   hitter_proj_cols <- intersect(
-    c("name_normalized", "Name", "Team", "AB", "H", "R", "HR", "RBI", "SB"),
+    c("name_normalized", "Name", "Team",
+      "AB", "H", "R", "HR", "RBI", "SB",
+      "PA"),
     names(ros_hitters)
   )
 
@@ -240,13 +248,13 @@ tryCatch({
                   nrow(roster_hitters)))
 
   # --- Pitchers ---
-  # Note: ERA + WHIP are kept on each player so the team-detail CSV (and the
-  # Lovable team drill-down) can show per-player rate stats. They are NOT used
-  # in the team-level standings projection — that uses ER/IP/BB/HA components.
+  # ERA + WHIP feed the team-detail rate-stat columns. GS + G feed SP/RP
+  # classification (GS/G >= 0.5 → SP) for the prorated standings view.
   pitcher_proj_cols <- intersect(
     c("name_normalized", "Name", "Team",
       "IP", "W", "SV", "SO", "ER", "BB", "HA",
-      "ERA", "WHIP"),
+      "ERA", "WHIP",
+      "GS", "G"),
     names(ros_pitchers)
   )
 
@@ -339,12 +347,46 @@ tryCatch({
   }
 
   # ================================================================
-  # STEPS 5-7 — Aggregate, combine YTD + ROS, rank teams
-  # Wrapped in a helper so we can compute two views:
-  #   * all rostered players  (current behavior)
-  #   * active-slot players   (excludes bench, IL, minors)
+  # STEP 4d — Compute league-wide playing-time benchmarks and per-player
+  #           pt_fraction (used by the prorated standings view).
   # ================================================================
-  message("\n=== Steps 5-7: Projecting standings (all + active-only) ===")
+  message("\n=== Step 4d: Computing playing-time benchmarks ===")
+  pt_benchmarks <- compute_pt_benchmarks(ros_hitters, ros_pitchers)
+  message(sprintf("Hitter benchmarks: %s",
+                  paste(sprintf("%s=%.0f PA (n=%d)",
+                                pt_benchmarks$hitters$position,
+                                pt_benchmarks$hitters$benchmark_pa,
+                                pt_benchmarks$hitters$pool_size),
+                        collapse = ", ")))
+  message(sprintf("Pitcher benchmarks: SP=%.1f IP, RP=%.1f IP",
+                  pt_benchmarks$sp_benchmark, pt_benchmarks$rp_benchmark))
+
+  roster_hitters <- attach_hitter_eligibility(
+    roster_hitters,
+    positions_path = "data/raw/positions_latest.csv",
+    benchmarks     = pt_benchmarks,
+    normalize_fn   = normalize_name
+  )
+  roster_pitchers <- attach_pitcher_role(roster_pitchers, pt_benchmarks)
+
+  # ================================================================
+  # STEP 4e — Build per-team (stashed, fill-in, f) pairings.
+  # ================================================================
+  message("\n=== Step 4e: Pairing stashed players to active fill-ins ===")
+  hitter_pairs  <- build_hitter_pairings(roster_hitters)
+  pitcher_pairs <- build_pitcher_pairings(roster_pitchers)
+  message(sprintf("Built %d hitter pairings, %d pitcher pairings across %d teams",
+                  nrow(hitter_pairs), nrow(pitcher_pairs),
+                  n_distinct(c(hitter_pairs$team_id, pitcher_pairs$team_id))))
+
+  # ================================================================
+  # STEPS 5-7 — Aggregate, combine YTD + ROS, rank teams
+  # Wrapped in a helper so we can compute three views:
+  #   * all rostered players  (legacy default)
+  #   * active-slot players   (excludes bench, IL, minors)
+  #   * prorated              (full ROS for stashed; (1-f) ROS for fill-ins)
+  # ================================================================
+  message("\n=== Steps 5-7: Projecting standings (all + active + prorated) ===")
 
   project_standings <- function(rh, rp, ytd) {
     hitter_ros_by_team <- rh %>%
@@ -451,6 +493,15 @@ tryCatch({
     roster_hitters_active, roster_pitchers_active, ytd_standings
   )
 
+  # View 3: prorated. Scale fill-in counting stats by (1 - f) so a stashed
+  # player and the active fill-in occupying their slot don't double-count.
+  prorated_input <- apply_prorations(
+    roster_hitters, roster_pitchers, hitter_pairs, pitcher_pairs
+  )
+  projected_prorated <- project_standings(
+    prorated_input$hitters, prorated_input$pitchers, ytd_standings
+  )
+
   # ================================================================
   # STEP 8 — Output
   # ================================================================
@@ -474,19 +525,80 @@ tryCatch({
             "data/processed/inseason_projected_standings_active.csv")
   message("Wrote data/processed/inseason_projected_standings_active.csv")
 
+  write_csv(standings_cols(projected_prorated),
+            "data/processed/inseason_projected_standings_prorated.csv")
+  message("Wrote data/processed/inseason_projected_standings_prorated.csv")
+
+  # Benchmarks audit
+  bm_out <- bind_rows(
+    pt_benchmarks$hitters %>% mutate(role = "hitter") %>%
+      transmute(role, position, benchmark = benchmark_pa,
+                unit = "PA", pool_size),
+    tibble(role = "pitcher", position = "SP",
+           benchmark = pt_benchmarks$sp_benchmark,
+           unit = "IP", pool_size = NA_integer_),
+    tibble(role = "pitcher", position = "RP",
+           benchmark = pt_benchmarks$rp_benchmark,
+           unit = "IP", pool_size = NA_integer_)
+  )
+  write_csv(bm_out, "data/processed/inseason_pt_benchmarks.csv")
+  message("Wrote data/processed/inseason_pt_benchmarks.csv")
+
+  # Pairings audit
+  pairings_out <- bind_rows(
+    hitter_pairs  %>% mutate(player_type = "hitter"),
+    pitcher_pairs %>% mutate(player_type = "pitcher")
+  )
+  write_csv(pairings_out, "data/processed/inseason_pairings.csv")
+  message("Wrote data/processed/inseason_pairings.csv")
+
+  # ================================================================
+  # Build per-player displacement_role + effective_share for the
+  # team-detail CSV so the Lovable drill-down can label each row.
+  # ================================================================
+  hitter_disp <- bind_rows(
+    hitter_pairs %>% transmute(team_id, player_name = stashed_player,
+                               displacement_role = paste0("stashed_by:", fill_in_player),
+                               effective_share   = 1.0),
+    hitter_pairs %>% transmute(team_id, player_name = fill_in_player,
+                               displacement_role = paste0("displaces:", stashed_player),
+                               effective_share   = 1 - f)
+  )
+  pitcher_disp <- bind_rows(
+    pitcher_pairs %>% transmute(team_id, player_name = stashed_player,
+                                displacement_role = paste0("stashed_by:", fill_in_player),
+                                effective_share   = 1.0),
+    pitcher_pairs %>% transmute(team_id, player_name = fill_in_player,
+                                displacement_role = paste0("displaces:", stashed_player),
+                                effective_share   = 1 - f)
+  )
+
   # Player-level detail (always includes every rostered player plus
-  # roster_status so the dashboard can filter/highlight bench/IL/minors)
+  # roster_status, pt_fraction, and displacement_role so the dashboard can
+  # filter/highlight bench/IL/minors and label each row's prorated share).
   detail_hitters <- roster_hitters %>%
     select(team_id, team_name, player_name, lineup_slot, roster_status,
-           any_of(c("AB", "H", "R", "HR", "RBI", "SB")),
+           any_of(c("AB", "H", "R", "HR", "RBI", "SB", "PA")),
+           any_of(c("primary_position", "pt_benchmark", "pt_fraction")),
            any_of(c("sgp_total", "sgp_hitting", "sgp_pitching"))) %>%
-    mutate(player_type = "hitter")
+    mutate(player_type = "hitter") %>%
+    left_join(hitter_disp, by = c("team_id", "player_name")) %>%
+    mutate(
+      displacement_role = coalesce(displacement_role, ""),
+      effective_share   = coalesce(effective_share, 1.0)
+    )
 
   detail_pitchers <- roster_pitchers %>%
     select(team_id, team_name, player_name, lineup_slot, roster_status,
            any_of(c("IP", "W", "SV", "SO", "ER", "BB", "HA", "ERA", "WHIP")),
+           any_of(c("pitcher_role", "pt_benchmark", "pt_fraction")),
            any_of(c("sgp_total", "sgp_hitting", "sgp_pitching"))) %>%
-    mutate(player_type = "pitcher")
+    mutate(player_type = "pitcher") %>%
+    left_join(pitcher_disp, by = c("team_id", "player_name")) %>%
+    mutate(
+      displacement_role = coalesce(displacement_role, ""),
+      effective_share   = coalesce(effective_share, 1.0)
+    )
 
   team_detail <- bind_rows(detail_hitters, detail_pitchers) %>%
     arrange(team_name, player_type, desc(coalesce(
@@ -510,8 +622,12 @@ tryCatch({
                warnings = if (length(pipeline_warnings) > 0)
                  pipeline_warnings else NULL,
                extras = list(
-                 sgp_source    = sgp_source,
-                 n_free_agents = fa_result$n_free_agents
+                 sgp_source       = sgp_source,
+                 n_free_agents    = fa_result$n_free_agents,
+                 sp_benchmark_ip  = pt_benchmarks$sp_benchmark,
+                 rp_benchmark_ip  = pt_benchmarks$rp_benchmark,
+                 n_hitter_pairings  = nrow(hitter_pairs),
+                 n_pitcher_pairings = nrow(pitcher_pairs)
                ))
 
   # --- Summary ---
@@ -523,6 +639,11 @@ tryCatch({
 
   message("\nProjected Standings (active-slot players only):")
   projected_active %>%
+    select(projected_finish, team_name, total_pts) %>%
+    pwalk(~ message(sprintf("  %2d. %-25s %.1f pts", ..1, ..2, ..3)))
+
+  message("\nProjected Standings (prorated):")
+  projected_prorated %>%
     select(projected_finish, team_name, total_pts) %>%
     pwalk(~ message(sprintf("  %2d. %-25s %.1f pts", ..1, ..2, ..3)))
 

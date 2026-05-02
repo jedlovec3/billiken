@@ -351,15 +351,46 @@ app.post("/run_inseason_update", async (c) => {
 
 // GET /inseason_standings — projected end-of-season standings as JSON
 // Query params:
-//   active_only  "true" → serve the active-slot-only projections
-//                (excludes bench, IL, minors). Default "false" preserves
-//                the legacy "all rostered players" view.
-app.get("/inseason_standings", async (c) => {
-  const activeOnly = String(c.req.query("active_only") || "")
+//   view         "all" | "active" | "prorated" (default "prorated")
+//                  - all:      every rostered player at full ROS
+//                  - active:   active-slot players only (no bench/IL/minors)
+//                  - prorated: full ROS for stashed players, fill-in stats
+//                              scaled by (1 - f) where f = stashed player's
+//                              expected playing-time fraction
+//   active_only  "true" → backwards-compatible alias for view=active.
+function resolveStandingsView(c) {
+  const rawView = String(c.req.query("view") || "").toLowerCase();
+  const legacyActive = String(c.req.query("active_only") || "")
     .toLowerCase() === "true";
-  const fileName = activeOnly
-    ? "inseason_projected_standings_active.csv"
-    : "inseason_projected_standings.csv";
+
+  let view;
+  if (rawView === "all" || rawView === "all_rostered") {
+    view = "all";
+  } else if (rawView === "active" || rawView === "active_only") {
+    view = "active";
+  } else if (rawView === "prorated") {
+    view = "prorated";
+  } else if (legacyActive) {
+    view = "active";
+  } else {
+    view = "prorated"; // new default
+  }
+
+  const fileMap = {
+    all:      "inseason_projected_standings.csv",
+    active:   "inseason_projected_standings_active.csv",
+    prorated: "inseason_projected_standings_prorated.csv",
+  };
+  const labelMap = {
+    all:      "all_rostered",
+    active:   "active_only",
+    prorated: "prorated",
+  };
+  return { view, fileName: fileMap[view], label: labelMap[view] };
+}
+
+app.get("/inseason_standings", async (c) => {
+  const { view, fileName, label } = resolveStandingsView(c);
 
   try {
     const filePath = join("data", "processed", fileName);
@@ -380,7 +411,7 @@ app.get("/inseason_standings", async (c) => {
 
     return c.json({
       standings: rows,
-      view: activeOnly ? "active_only" : "all_rostered",
+      view: label,
       status,
     });
   } catch (error) {
@@ -534,6 +565,35 @@ app.get("/inseason_free_agents/:player", async (c) => {
       {
         error:
           "Free-agent data not available. Run /run_inseason_update first.",
+      },
+      { status: 404 }
+    );
+  }
+});
+
+// GET /inseason_pt_benchmarks — league-wide playing-time benchmarks used
+// by the prorated standings view. Returns the raw CSV rows plus a
+// convenience `hitters` map and `pitchers` map.
+app.get("/inseason_pt_benchmarks", async (c) => {
+  try {
+    const filePath = join(
+      "data", "processed", "inseason_pt_benchmarks.csv"
+    );
+    const content = await fs.readFile(filePath, "utf-8");
+    const rows = csvToJson(content);
+
+    const hitters = {};
+    const pitchers = {};
+    for (const r of rows) {
+      if (r.role === "hitter") hitters[r.position] = r.benchmark;
+      else if (r.role === "pitcher") pitchers[r.position] = r.benchmark;
+    }
+    return c.json({ rows, hitters, pitchers });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          "Benchmarks not available. Run /run_inseason_update first.",
       },
       { status: 404 }
     );
