@@ -81,16 +81,26 @@ compute_pt_benchmarks <- function(ros_hitters, ros_pitchers) {
     )
 
     pick_primary <- function(pos_str) {
-      if (is.na(pos_str) || pos_str == "") return(NA_character_)
-      parts <- strsplit(pos_str, "/", fixed = TRUE)[[1]]
-      parts <- ifelse(parts %in% c("LF","CF","RF"), "OF", parts)
-      parts <- intersect(parts, names(HITTER_PRIMARY_PRECEDENCE))
-      if (length(parts) == 0) return("OF")
-      parts[which.min(HITTER_PRIMARY_PRECEDENCE[parts])]
+      tryCatch({
+        pos_str <- as.character(pos_str)
+        if (length(pos_str) == 0) return(NA_character_)
+        if (is.na(pos_str) || pos_str == "") return(NA_character_)
+        parts <- strsplit(pos_str, "/", fixed = TRUE)[[1]]
+        if (length(parts) == 0) return(NA_character_)
+        parts <- ifelse(parts %in% c("LF","CF","RF"), "OF", parts)
+        parts <- intersect(parts, names(HITTER_PRIMARY_PRECEDENCE))
+        if (length(parts) == 0) return(NA_character_)
+        parts[which.min(HITTER_PRIMARY_PRECEDENCE[parts])]
+      }, error = function(e) NA_character_)
     }
 
     hitters_tagged <- ros_hitters %>%
-      mutate(primary_position = vapply(Pos, pick_primary, character(1)))
+      mutate(
+        Pos = as.character(Pos),
+        primary_position = vapply(Pos, pick_primary,
+                                  FUN.VALUE = NA_character_,
+                                  USE.NAMES = FALSE)
+      )
 
     hitter_bm <- map_dfr(names(position_starter_counts), function(pos) {
       K <- position_starter_counts[[pos]]

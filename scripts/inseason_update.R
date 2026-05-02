@@ -347,37 +347,53 @@ tryCatch({
   }
 
   # ================================================================
-  # STEP 4d — Compute league-wide playing-time benchmarks and per-player
-  #           pt_fraction (used by the prorated standings view).
+  # STEPS 4d-4e — Compute benchmarks, attach pt_fraction, build pairings.
+  # The whole prorated path is wrapped in its own tryCatch: if it fails the
+  # legacy "all" and "active" views still ship.
   # ================================================================
-  message("\n=== Step 4d: Computing playing-time benchmarks ===")
-  pt_benchmarks <- compute_pt_benchmarks(ros_hitters, ros_pitchers)
-  message(sprintf("Hitter benchmarks: %s",
-                  paste(sprintf("%s=%.0f PA (n=%d)",
-                                pt_benchmarks$hitters$position,
-                                pt_benchmarks$hitters$benchmark_pa,
-                                pt_benchmarks$hitters$pool_size),
-                        collapse = ", ")))
-  message(sprintf("Pitcher benchmarks: SP=%.1f IP, RP=%.1f IP",
-                  pt_benchmarks$sp_benchmark, pt_benchmarks$rp_benchmark))
+  prorated_ok <- TRUE
+  pt_benchmarks <- list(hitters = tibble(position = character(0),
+                                         benchmark_pa = numeric(0),
+                                         pool_size = integer(0)),
+                        sp_benchmark = NA_real_,
+                        rp_benchmark = NA_real_)
+  hitter_pairs  <- tibble(team_id = integer(0), team_name = character(0),
+                          stashed_player = character(0), stashed_pt = numeric(0),
+                          fill_in_player = character(0), f = numeric(0))
+  pitcher_pairs <- hitter_pairs
 
-  roster_hitters <- attach_hitter_eligibility(
-    roster_hitters,
-    positions_path = "data/raw/positions_latest.csv",
-    benchmarks     = pt_benchmarks,
-    normalize_fn   = normalize_name
-  )
-  roster_pitchers <- attach_pitcher_role(roster_pitchers, pt_benchmarks)
+  tryCatch({
+    message("\n=== Step 4d: Computing playing-time benchmarks ===")
+    pt_benchmarks <- compute_pt_benchmarks(ros_hitters, ros_pitchers)
+    message(sprintf("Hitter benchmarks: %s",
+                    paste(sprintf("%s=%.0f PA (n=%d)",
+                                  pt_benchmarks$hitters$position,
+                                  pt_benchmarks$hitters$benchmark_pa,
+                                  pt_benchmarks$hitters$pool_size),
+                          collapse = ", ")))
+    message(sprintf("Pitcher benchmarks: SP=%.1f IP, RP=%.1f IP",
+                    pt_benchmarks$sp_benchmark, pt_benchmarks$rp_benchmark))
 
-  # ================================================================
-  # STEP 4e — Build per-team (stashed, fill-in, f) pairings.
-  # ================================================================
-  message("\n=== Step 4e: Pairing stashed players to active fill-ins ===")
-  hitter_pairs  <- build_hitter_pairings(roster_hitters)
-  pitcher_pairs <- build_pitcher_pairings(roster_pitchers)
-  message(sprintf("Built %d hitter pairings, %d pitcher pairings across %d teams",
-                  nrow(hitter_pairs), nrow(pitcher_pairs),
-                  n_distinct(c(hitter_pairs$team_id, pitcher_pairs$team_id))))
+    roster_hitters <- attach_hitter_eligibility(
+      roster_hitters,
+      positions_path = "data/raw/positions_latest.csv",
+      benchmarks     = pt_benchmarks,
+      normalize_fn   = normalize_name
+    )
+    roster_pitchers <- attach_pitcher_role(roster_pitchers, pt_benchmarks)
+
+    message("\n=== Step 4e: Pairing stashed players to active fill-ins ===")
+    hitter_pairs  <- build_hitter_pairings(roster_hitters)
+    pitcher_pairs <- build_pitcher_pairings(roster_pitchers)
+    message(sprintf("Built %d hitter pairings, %d pitcher pairings across %d teams",
+                    nrow(hitter_pairs), nrow(pitcher_pairs),
+                    n_distinct(c(hitter_pairs$team_id, pitcher_pairs$team_id))))
+  }, error = function(e) {
+    prorated_ok <<- FALSE
+    w <- sprintf("Prorated view setup failed: %s", e$message)
+    message("WARNING: ", w)
+    pipeline_warnings <<- c(pipeline_warnings, w)
+  })
 
   # ================================================================
   # STEPS 5-7 — Aggregate, combine YTD + ROS, rank teams
@@ -495,12 +511,24 @@ tryCatch({
 
   # View 3: prorated. Scale fill-in counting stats by (1 - f) so a stashed
   # player and the active fill-in occupying their slot don't double-count.
-  prorated_input <- apply_prorations(
-    roster_hitters, roster_pitchers, hitter_pairs, pitcher_pairs
-  )
-  projected_prorated <- project_standings(
-    prorated_input$hitters, prorated_input$pitchers, ytd_standings
-  )
+  # If 4d/4e failed, fall back to the all-rostered projection so the prorated
+  # CSV still has data and the dashboard never goes dark.
+  projected_prorated <- projected
+  if (prorated_ok) {
+    tryCatch({
+      prorated_input <- apply_prorations(
+        roster_hitters, roster_pitchers, hitter_pairs, pitcher_pairs
+      )
+      projected_prorated <- project_standings(
+        prorated_input$hitters, prorated_input$pitchers, ytd_standings
+      )
+    }, error = function(e) {
+      prorated_ok <<- FALSE
+      w <- sprintf("Prorated standings projection failed: %s", e$message)
+      message("WARNING: ", w)
+      pipeline_warnings <<- c(pipeline_warnings, w)
+    })
+  }
 
   # ================================================================
   # STEP 8 — Output
