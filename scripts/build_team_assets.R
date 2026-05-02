@@ -75,8 +75,13 @@ slot_to_status <- function(slot) {
 
 # Convert a keepers.csv `Contract` cell into normalized fields.
 #
-# Returns a list with `contract_status` and `contract_end`, with
-# CURRENT_YEAR taken from the global of the same name.
+# `contract_end` is the last calendar year the player can be retained on
+# the roster without re-entering the auction, assuming the GM exercises
+# every keep option at the existing salary. The opt-year keep is treated
+# as exercised (it is free — same salary, one more year), so a year2
+# player has contract_end = current_year + 1 (the opt year), and a year1
+# player has contract_end = current_year + 2 (year 2 + opt year).
+# Extending past the opt year costs +$5/yr and is modeled in Phase 2.
 parse_contract <- function(contract_code) {
   code <- str_squish(as.character(contract_code))
   code_lower <- str_to_lower(code)
@@ -91,8 +96,8 @@ parse_contract <- function(contract_code) {
   )
 
   end <- case_when(
-    status == "year1"    ~ as.integer(CURRENT_YEAR + 1L),  # year 2 next year
-    status == "year2"    ~ as.integer(CURRENT_YEAR),       # opt next year
+    status == "year1"    ~ as.integer(CURRENT_YEAR + 2L),  # year2 + opt
+    status == "year2"    ~ as.integer(CURRENT_YEAR + 1L),  # opt year
     status == "opt"      ~ as.integer(CURRENT_YEAR),       # FA after this year
     status == "extended" ~ suppressWarnings(as.integer(code)),
     TRUE                 ~ NA_integer_
