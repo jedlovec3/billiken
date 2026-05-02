@@ -698,6 +698,27 @@ app.get("/team_posture", async (c) => {
   }
 });
 
+// GET /team_keeper_pressure — per-team keeper-cap shedding analysis.
+// For each Billiken team: how many keeper-worthy players (positive
+// future_value) sit past the projected next-year keeper cap, and the
+// pipe-separated names of those players. Backed by
+// data/processed/team_keeper_pressure.csv (built by scripts/team_posture.R
+// after Phase 2 multi-year values are attached to team_assets.csv).
+app.get("/team_keeper_pressure", async (c) => {
+  try {
+    const rows = await readProcessedCsv("team_keeper_pressure.csv");
+    return c.json({ team_keeper_pressure: rows, count: rows.length });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          "team_keeper_pressure.csv not available. Run scripts/team_posture.R or wait for the next daily refresh.",
+      },
+      { status: 404 }
+    );
+  }
+});
+
 // Health check
 app.get("/health", (c) => {
   return c.json({ status: "ok", packagesReady });

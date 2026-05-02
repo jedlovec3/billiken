@@ -1,8 +1,8 @@
 # build_team_assets.R
 #
-# Phase 1 of the trade-analysis tooling. Produces a single canonical table
-# `data/processed/team_assets.csv` that has one row per rostered Billiken
-# player, joining:
+# Phases 1 + 2 of the trade-analysis tooling. Produces a single canonical
+# table `data/processed/team_assets.csv` that has one row per rostered
+# Billiken player, joining:
 #
 #   * Current ESPN rosters (data/raw/espn_rosters_latest.csv)
 #   * Keeper contract codes / salaries (data/raw/keepers.csv)
@@ -14,6 +14,15 @@
 #   * In-season ROS player detail (data/processed/inseason_team_details.csv)
 #     for ROS counting stats (sgp_total + roster_status if present)
 #   * Position eligibility (data/raw/positions_latest.csv)
+#   * Player birthdates (data/processed/player_birthdates.csv) for the
+#     aging curve. Lazily refreshed by scripts/fetch_player_birthdates.R
+#     when a cache miss is detected.
+#
+# Phase 2 adds multi-year value: per-year sgpar/dollar/salary/surplus
+# through the player's contract_end, plus discounted aggregates
+# (win_now_value, future_value, total_value) using gamma = 0.7. Salary
+# path follows the constitution: flat in years 1-2, free same-salary
+# keep in the opt year, +$5/yr per added year past opt.
 #
 # This file is the single source of truth for every later phase of the
 # trade-analysis tooling.
@@ -400,6 +409,144 @@ assets <- assets %>%
   join_by_normalized_name(pos_long, cols = c("positions"))
 
 # ---------------------------------------------------------------------------
+# Phase 2 — multi-year value
+#
+#   * Birthdate → age_2026 via the lazy MLB Stats API cache. We refresh
+#     the cache here so first-time runs auto-populate it.
+#   * Aging curve: sgpar / dollar_value decay 0%/yr through age 30, 5%/yr
+#     for ages 31–33, 10%/yr for age 34+. Same shape for hitters and
+#     pitchers in v1.
+#   * Salary path: flat in years 1–2, free same-salary keep in the opt
+#     year, +$5/yr per added year past opt. Beyond contract_end the
+#     player re-enters the auction (surplus_y = 0).
+#   * Discount factor gamma = 0.7 (configurable below).
+#   * Aggregates: win_now_value (= surplus_2026), future_value (sum of
+#     surplus_y * gamma^(y - 2026) for y > 2026 through contract_end),
+#     and total_value (= win_now + future).
+# ---------------------------------------------------------------------------
+
+GAMMA   <- 0.7
+HORIZON <- 4L  # cap at 4 future years (2027–2030 in 2026)
+
+# Refresh / load the birthdate cache. fetch_player_birthdates.R is
+# idempotent and tolerant of API failures, so this is safe to call on
+# every build.
+local({
+  birthdates_env <- new.env(parent = globalenv())
+  source(resolve_path("scripts/fetch_player_birthdates.R"),
+         local = birthdates_env)
+  tryCatch(
+    birthdates_env$build_player_birthdates_cache(verbose = FALSE),
+    error = function(e) {
+      message("WARNING: birthdate refresh failed: ", e$message,
+              " (continuing with existing cache, if any)")
+    }
+  )
+})
+
+birthdates_path <- resolve_path("data/processed/player_birthdates.csv")
+birthdates_lookup <- if (file.exists(birthdates_path)) {
+  read_csv(birthdates_path, show_col_types = FALSE) %>%
+    filter(!is.na(birth_year)) %>%
+    transmute(
+      Name        = str_squish(as.character(Name)),
+      birth_year  = as.integer(birth_year),
+      key_keep    = normalize_name(Name),
+      key_strip   = normalize_name(strip_suffixes(Name))
+    )
+} else {
+  tibble(Name = character(0), birth_year = integer(0),
+         key_keep = character(0), key_strip = character(0))
+}
+
+assets <- assets %>%
+  join_by_normalized_name(birthdates_lookup, cols = c("birth_year")) %>%
+  mutate(
+    age_2026 = ifelse(!is.na(birth_year), CURRENT_YEAR - birth_year, NA_integer_)
+  )
+
+# Aging multiplier from CURRENT_YEAR to year `y` for a player who is
+# `age_now` years old in CURRENT_YEAR. Returns 1 for y == CURRENT_YEAR
+# and a compounded decay factor for y > CURRENT_YEAR.
+aging_factor <- function(age_now, y) {
+  if (is.na(age_now)) return(1)  # unknown age → hold flat (best guess)
+  delta <- y - CURRENT_YEAR
+  if (delta <= 0) return(1)
+  factor <- 1
+  for (i in seq_len(delta)) {
+    age_at_year <- age_now + i
+    decay <- if (age_at_year <= 30) 0
+             else if (age_at_year <= 33) 0.05
+             else 0.10
+    factor <- factor * (1 - decay)
+  }
+  factor
+}
+
+# Salary in year y for a player whose 2026 salary, contract_status, and
+# contract_end are known. Returns NA past contract_end (player would have
+# re-entered the auction).
+salary_in_year <- function(salary_2026, status, contract_end, y) {
+  if (is.na(y) || is.na(salary_2026) || is.na(status)) return(NA_real_)
+  if (y == CURRENT_YEAR) return(salary_2026)
+  if (is.na(contract_end) || y > contract_end) return(NA_real_)
+  # Within the keepable window the salary stays flat (years 1, 2, opt are
+  # all the same salary as the original contract). Extensions past the
+  # opt year would already have rolled `contract_status` to "extended"
+  # with the salary frozen at the extended rate, so we don't add the
+  # +$5/yr again here.
+  salary_2026
+}
+
+# Build per-player multi-year columns. We loop over years 2026..2026+HORIZON
+# and emit sgpar_y, dollar_value_y, salary_y, surplus_y. Any year past
+# `contract_end` produces surplus_y = 0 (asset value of an expired
+# contract is whatever the auction would price the player at, which is
+# zero from the keeper-cost perspective).
+year_offsets <- 0:HORIZON
+years        <- CURRENT_YEAR + year_offsets
+
+multi_year <- assets %>%
+  rowwise() %>%
+  mutate(
+    .factor_list = list(vapply(years, function(y) aging_factor(age_2026, y), numeric(1))),
+    .salary_list = list(vapply(years, function(y)
+      salary_in_year(salary_2026, contract_status, contract_end, y),
+      numeric(1)))
+  ) %>%
+  ungroup() %>%
+  mutate(
+    sgpar_2026          = sgpar_full_2026,
+    sgpar_2027          = sgpar_full_2026 * map_dbl(.factor_list, 2),
+    sgpar_2028          = sgpar_full_2026 * map_dbl(.factor_list, 3),
+    sgpar_2029          = sgpar_full_2026 * map_dbl(.factor_list, 4),
+    sgpar_2030          = sgpar_full_2026 * map_dbl(.factor_list, 5),
+    dollar_value_2027   = dollar_value_2026 * map_dbl(.factor_list, 2),
+    dollar_value_2028   = dollar_value_2026 * map_dbl(.factor_list, 3),
+    dollar_value_2029   = dollar_value_2026 * map_dbl(.factor_list, 4),
+    dollar_value_2030   = dollar_value_2026 * map_dbl(.factor_list, 5),
+    salary_2027         = map_dbl(.salary_list, 2),
+    salary_2028         = map_dbl(.salary_list, 3),
+    salary_2029         = map_dbl(.salary_list, 4),
+    salary_2030         = map_dbl(.salary_list, 5),
+    surplus_2027        = ifelse(is.na(salary_2027), 0, dollar_value_2027 - salary_2027),
+    surplus_2028        = ifelse(is.na(salary_2028), 0, dollar_value_2028 - salary_2028),
+    surplus_2029        = ifelse(is.na(salary_2029), 0, dollar_value_2029 - salary_2029),
+    surplus_2030        = ifelse(is.na(salary_2030), 0, dollar_value_2030 - salary_2030)
+  ) %>%
+  select(-.factor_list, -.salary_list)
+
+assets <- multi_year %>%
+  mutate(
+    win_now_value = coalesce(dollar_value_2026 - salary_2026, 0),
+    future_value  = coalesce(surplus_2027, 0) * GAMMA   +
+                    coalesce(surplus_2028, 0) * GAMMA^2 +
+                    coalesce(surplus_2029, 0) * GAMMA^3 +
+                    coalesce(surplus_2030, 0) * GAMMA^4,
+    total_value   = win_now_value + future_value
+  )
+
+# ---------------------------------------------------------------------------
 # Final shape
 # ---------------------------------------------------------------------------
 
@@ -422,16 +569,25 @@ team_assets <- assets %>%
     is_expiring_after_2026,
     next_offseason_decision,
     contract_source,
+    age_2026,
+    birth_year,
     ros_sgp_2026,
     sgpar_full_2026,
     fg_auction_dollars,
     dollar_value_2026,
     surplus_2026,
+    sgpar_2027, sgpar_2028, sgpar_2029, sgpar_2030,
+    dollar_value_2027, dollar_value_2028, dollar_value_2029, dollar_value_2030,
+    salary_2027, salary_2028, salary_2029, salary_2030,
+    surplus_2027, surplus_2028, surplus_2029, surplus_2030,
+    win_now_value,
+    future_value,
+    total_value,
     ros_R, ros_HR, ros_RBI, ros_SB,
     ros_W, ros_SV, ros_SO,
     espn_player_id
   ) %>%
-  arrange(billikenTeam, desc(coalesce(dollar_value_2026, 0)))
+  arrange(billikenTeam, desc(coalesce(total_value, dollar_value_2026, 0)))
 
 out_path <- resolve_path("data/processed/team_assets.csv")
 dir.create(dirname(out_path), showWarnings = FALSE, recursive = TRUE)

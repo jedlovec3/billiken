@@ -157,14 +157,15 @@ posture <- standings %>%
 
 # ---------------------------------------------------------------------------
 # Keeper-cap pressure: how many keepers each team would have to drop
-# next offseason to fit under their cap.
-#
-# v1 proxy: count the number of rostered players with positive
-# `surplus_2026` (i.e. dollar value > salary). Phase 2 will replace this
-# with multi-year `future_value` once that's available.
+# next offseason to fit under their cap. Phase 2 multi-year value gives
+# us a defensible ranking: sort each team's players by future_value
+# desc, anything past the keeper_cap with positive future_value is a
+# "borderline keeper" the GM would have to shed under the cap.
 # ---------------------------------------------------------------------------
 
 if (nrow(team_assets) > 0) {
+  has_future <- "future_value" %in% names(team_assets)
+
   worth_keeping <- team_assets %>%
     mutate(billikenTeam = normalize_team(billikenTeam)) %>%
     group_by(billikenTeam) %>%
@@ -184,6 +185,54 @@ if (nrow(team_assets) > 0) {
                                replace_na(n_with_positive_surplus, 0L) - keeper_cap)
     ) %>%
     select(-keepers_to_shed_min)
+
+  # ---- Keeper-cap pressure detail ----
+  # For each team, sort by future_value (or surplus_2026 fallback) desc,
+  # mark the players within the keeper cap as "keep" and the rest as
+  # "shed". Emit a per-team summary CSV listing the would-be-shed names.
+  rank_col <- if (has_future) "future_value" else "surplus_2026"
+
+  keeper_cap_lookup <- posture %>%
+    select(billikenTeam, keeper_cap)
+
+  ranked <- team_assets %>%
+    mutate(billikenTeam = normalize_team(billikenTeam)) %>%
+    left_join(keeper_cap_lookup, by = "billikenTeam") %>%
+    group_by(billikenTeam) %>%
+    arrange(desc(coalesce(.data[[rank_col]], -Inf)), .by_group = TRUE) %>%
+    mutate(
+      keeper_rank   = row_number(),
+      keeper_status = ifelse(keeper_rank <= keeper_cap, "keep", "shed")
+    ) %>%
+    ungroup()
+
+  # Build the team-level summary used by the dashboard. We surface a few
+  # numbers and a comma-joined list of the borderline names so the
+  # Lovable card can show them inline.
+  pressure_summary <- ranked %>%
+    group_by(billikenTeam, keeper_cap) %>%
+    summarise(
+      n_rostered = n(),
+      n_kept     = sum(keeper_status == "keep"),
+      n_shed     = sum(keeper_status == "shed"),
+      shed_value_total = sum(
+        ifelse(keeper_status == "shed",
+               coalesce(.data[[rank_col]], 0), 0)
+      ),
+      shed_with_positive_value = sum(
+        keeper_status == "shed" &
+        coalesce(.data[[rank_col]], 0) > 0
+      ),
+      shed_names = paste(
+        Name[keeper_status == "shed" & coalesce(.data[[rank_col]], 0) > 0],
+        collapse = "|"
+      ),
+      .groups = "drop"
+    )
+
+  out_pressure_path <- resolve_path("data/processed/team_keeper_pressure.csv")
+  write_csv(pressure_summary, out_pressure_path)
+  message(sprintf("Wrote %s", out_pressure_path))
 } else {
   message("team_assets.csv not found; skipping keeper-pressure metrics.")
   posture <- posture %>%
