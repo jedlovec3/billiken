@@ -645,6 +645,29 @@ tryCatch({
   write_csv(free_agents, "data/processed/inseason_free_agents.csv")
   message("Wrote data/processed/inseason_free_agents.csv")
 
+  # ================================================================
+  # STEP 10 — Build trade-analysis artifacts (Phase 1 + Phase 3)
+  # ================================================================
+  # Run team_assets and team_posture as side-effect scripts. Wrap each in
+  # its own tryCatch so a failure here is surfaced as a pipeline warning
+  # without breaking the standings / free-agent endpoints that downstream
+  # consumers already depend on.
+  message("\n=== Step 10: Building trade-analysis artifacts ===")
+
+  run_trade_artifact <- function(label, script_path) {
+    tryCatch({
+      message(sprintf("Running %s...", script_path))
+      source(script_path, local = new.env())
+    }, error = function(e) {
+      w <- sprintf("%s failed: %s", label, e$message)
+      message("WARNING: ", w)
+      pipeline_warnings <<- c(pipeline_warnings, w)
+    })
+  }
+
+  run_trade_artifact("build_team_assets", "scripts/build_team_assets.R")
+  run_trade_artifact("team_posture",      "scripts/team_posture.R")
+
   # Status
   write_status("success",
                warnings = if (length(pipeline_warnings) > 0)

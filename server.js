@@ -613,6 +613,91 @@ app.get("/inseason_status", async (c) => {
   }
 });
 
+// ============================================================
+// Trade-analysis endpoints (Phase 1 + Phase 3 of trade tooling)
+// ============================================================
+
+// Read a CSV from data/processed and return parsed rows or 404.
+async function readProcessedCsv(fileName) {
+  const filePath = join("data", "processed", fileName);
+  const content = await fs.readFile(filePath, "utf-8");
+  return csvToJson(content);
+}
+
+// GET /team_assets — every rostered player across the league with contract,
+// salary, value, and surplus columns. Backed by
+// data/processed/team_assets.csv (built by scripts/build_team_assets.R).
+app.get("/team_assets", async (c) => {
+  try {
+    const rows = await readProcessedCsv("team_assets.csv");
+    return c.json({ team_assets: rows, count: rows.length });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          "team_assets.csv not available. Run scripts/build_team_assets.R or wait for the next daily refresh.",
+      },
+      { status: 404 }
+    );
+  }
+});
+
+// GET /team_assets/:team — rows filtered to one Billiken team. Match is
+// case-insensitive substring on `billikenTeam`, mirroring the
+// /inseason_team/:team behavior.
+app.get("/team_assets/:team", async (c) => {
+  try {
+    const teamParam = decodeURIComponent(c.req.param("team")).toLowerCase();
+    const rows = await readProcessedCsv("team_assets.csv");
+    const teamRows = rows.filter(
+      (r) =>
+        r.billikenTeam &&
+        String(r.billikenTeam).toLowerCase().includes(teamParam)
+    );
+
+    if (teamRows.length === 0) {
+      return c.json(
+        { error: `No team_assets rows for team matching '${teamParam}'` },
+        { status: 404 }
+      );
+    }
+
+    return c.json({
+      team: teamRows[0].billikenTeam,
+      players: teamRows,
+      count: teamRows.length,
+    });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          "team_assets.csv not available. Run scripts/build_team_assets.R first.",
+      },
+      { status: 404 }
+    );
+  }
+});
+
+// GET /team_posture — competitive posture (contender/bubble/mid/rebuild)
+// for each of the 10 Billiken teams, plus gap-to-3rd, projected finish,
+// next-year keeper cap, and short priority_buy / priority_sell labels.
+// Backed by data/processed/team_posture.csv
+// (built by scripts/team_posture.R).
+app.get("/team_posture", async (c) => {
+  try {
+    const rows = await readProcessedCsv("team_posture.csv");
+    return c.json({ team_posture: rows, count: rows.length });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          "team_posture.csv not available. Run scripts/team_posture.R or wait for the next daily refresh.",
+      },
+      { status: 404 }
+    );
+  }
+});
+
 // Health check
 app.get("/health", (c) => {
   return c.json({ status: "ok", packagesReady });
