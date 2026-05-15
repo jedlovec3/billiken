@@ -802,6 +802,67 @@ app.get("/draft_pick_values", async (c) => {
   }
 });
 
+// GET /trade_targets/:my_team — ranked two-team trade suggestions where
+// :my_team is the side initiating the trade. Optional query params:
+//   partner=<substring>    filter to trades against one partner team
+//   horizon=win_now|future|balanced (default balanced)
+//                          re-sort results by my-side metric: win_now uses
+//                          partner.win_now_value lost vs target.win_now_value
+//                          gained; future uses the future_value analogue;
+//                          balanced (default) uses the precomputed posture-
+//                          weighted my_value_delta.
+//
+// Backed by data/processed/trade_targets.csv (built by
+// scripts/trade_recommendations.R).
+app.get("/trade_targets/:my_team", async (c) => {
+  try {
+    const myTeamRaw = decodeURIComponent(c.req.param("my_team")).toLowerCase();
+    const rows = await readProcessedCsv("trade_targets.csv");
+
+    let filtered = rows.filter(
+      (r) => r.my_team && String(r.my_team).toLowerCase().includes(myTeamRaw)
+    );
+
+    const partnerParam = c.req.query("partner");
+    if (partnerParam) {
+      const needle = decodeURIComponent(partnerParam).toLowerCase();
+      filtered = filtered.filter(
+        (r) =>
+          r.partner_team &&
+          String(r.partner_team).toLowerCase().includes(needle)
+      );
+    }
+
+    if (filtered.length === 0) {
+      return c.json(
+        {
+          error: `No trade_targets rows for my_team matching '${myTeamRaw}'`,
+        },
+        { status: 404 }
+      );
+    }
+
+    // Horizon is informational for the client today; the CSV already encodes
+    // posture-weighted deltas. Future enhancement: re-rank server-side.
+    const horizon = (c.req.query("horizon") || "balanced").toLowerCase();
+
+    return c.json({
+      my_team: filtered[0].my_team,
+      horizon,
+      trades: filtered,
+      count: filtered.length,
+    });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          "trade_targets.csv not available. Run scripts/trade_recommendations.R or wait for the next daily refresh.",
+      },
+      { status: 404 }
+    );
+  }
+});
+
 // Health check
 app.get("/health", (c) => {
   return c.json({ status: "ok", packagesReady });

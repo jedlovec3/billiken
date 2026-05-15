@@ -131,26 +131,38 @@ to 2013), compute per-pick SGPAR/dollar surplus realized, and smooth (LOESS
 or monotone spline). Output schema is intentionally stable so the matchmaker
 doesn't care which curve produced it.
 
-### Phase 5 — Trade matchmaker — ⏳ next up
-**Planned script:** `scripts/trade_recommendations.R`
-**Planned output:** `data/processed/trade_targets.csv`
-**Planned API:** `GET /trade_targets/:my_team?partner=<team>&horizon=win_now|future|balanced`
+### Phase 5 — Trade matchmaker — ✅ v1 shipped
+**Script:** `scripts/trade_recommendations.R`
+**Output:** `data/processed/trade_targets.csv`
+**API:** `GET /trade_targets/:my_team?partner=<team>&horizon=win_now|future|balanced`
 
 For each pair `(myTeam, otherTeam)`:
 
-1. Score each of `otherTeam`'s players by my-side fit (win-now if I'm a
-   contender, future if I'm rebuilding).
-2. For each candidate target, propose minimal-but-acceptable offers from my
-   tradeable assets (players + 2027 picks only) such that
-   `partner.posture_weighted_value(incoming) ≥ outgoing + small_premium`
-   and `my.posture_weighted_value(incoming) > outgoing`.
-3. Greedy add-until-acceptable on a sorted asset list is fine for v1; ILP
-   later if needed.
+1. Score each of `otherTeam`'s players by my-side fit using posture weights
+   (contender 1.0 win-now / 0.3 future, bubble 0.8/0.5, mid 0.6/0.7,
+   rebuild 0.2/1.0). Targets are partner *players* only in v1 — picks come
+   only from my side as offer currency.
+2. For each top-`TOP_N_CANDIDATE_TARGETS=20` candidate, propose minimal
+   greedy offers from my tradeable assets (rostered players + next-season
+   picks) such that `partner.posture_weighted_value(incoming) ≥ outgoing +
+   TRADE_PREMIUM` and `my.posture_weighted_value(incoming) > outgoing`.
+3. Pathology guard: assets are pre-filtered with
+   `MIN_ASSET_V_TO_PARTNER = 0.5` so the matchmaker can't "dump" underwater
+   contracts on the partner. Without this filter, year2/extended players
+   whose `v_to_partner` is *less negative* than their `v_to_me` get selected
+   first because their `give_arb` is positive even though no real GM would
+   accept them.
+4. Keep top `TOP_N_PER_PARTNER=5` trades per `(my_team, partner_team)` by
+   `my_value_delta`.
+
+Knobs (top of `trade_recommendations.R`): `TRADE_PREMIUM=1.0`,
+`MAX_OFFER_SIZE=4`, `MIN_TARGET_VALUE_TO_ME=3.0`,
+`MIN_ASSET_V_TO_PARTNER=0.5`.
 
 Two-team trades only in v1. Three-team is a future search-routine change;
 the data model is already 3-team-ready.
 
-### Phase 6 — Lovable Trade Lab tab — ⏳ pending Phase 5
+### Phase 6 — Lovable Trade Lab tab — ⏳ next up
 **Backend endpoints:** all current `/team_*` and `/draft_pick_values` plus
 the future `/trade_targets/...`.
 
@@ -175,11 +187,12 @@ stone.
 | `data/processed/team_posture.csv`        | `team_posture.R`      | one row per Billiken team; posture + projected standings facts |
 | `data/processed/team_keeper_pressure.csv`| `team_posture.R`      | one row per team; keeper-cap shed analysis with names |
 | `data/processed/draft_pick_values.csv`   | `value_draft_picks.R` | one row per `(team, round)` for next season; expected pick + \$ value |
+| `data/processed/trade_targets.csv`       | `trade_recommendations.R` | one row per suggested trade; my team, partner, target, offer, deltas |
 | `data/processed/player_birthdates.csv`   | `fetch_player_birthdates.R` | cached MLB Stats API birthdate lookup keyed by name + team |
 
-All four downstream artifacts (`team_assets`, `team_posture`,
-`team_keeper_pressure`, `draft_pick_values`) are rebuilt every daily run via
-Step 10 of `scripts/inseason_update.R`.
+All five downstream trade artifacts (`team_assets`, `team_posture`,
+`team_keeper_pressure`, `draft_pick_values`, `trade_targets`) are rebuilt
+every daily run via Step 10 of `scripts/inseason_update.R`.
 
 ## API surface (Trade Lab)
 | Method | Path | Returns |
@@ -190,6 +203,8 @@ Step 10 of `scripts/inseason_update.R`.
 | `GET` | `/team_keeper_pressure`     | All 10 keeper-pressure rows |
 | `GET` | `/draft_pick_values`        | Full next-season pick valuation table |
 | `GET` | `/draft_pick_values?team=X` | Same, filtered to one team |
+| `GET` | `/trade_targets/:my_team`   | Ranked trade suggestions where `:my_team` initiates |
+| `GET` | `/trade_targets/:my_team?partner=X` | Same, filtered to one partner team |
 
 Empty CSV cells deserialize to JSON `null` (not `0`) — the in-server
 `csvToJson` was hardened so the Lovable frontend can safely
@@ -204,18 +219,24 @@ Empty CSV cells deserialize to JSON `null` (not `0`) — the in-server
 | Posture thresholds         | gap-to-3rd cutoffs | `team_posture.R`      | Splits `contender`/`bubble`/`mid`/`rebuild` |
 | Placeholder pick curve     | `0.5 + 39.5*e^{-0.04(p-1)}` | `value_draft_picks.R` | Phase 4 v2 will replace this with historical fit |
 | Lottery sims               | `20000`            | `value_draft_picks.R` | Determines smoothness of expected R1 pick |
+| Trade premium              | `1.0`              | `trade_recommendations.R` | How much above v_to_partner the offer must clear to be "acceptable" |
+| Max offer size             | `4`                | `trade_recommendations.R` | Greedy stops adding assets once we hit this many |
+| Min target v_to_me         | `3.0`              | `trade_recommendations.R` | Don't waste rows on barely-worth-it targets |
+| Min asset v_to_partner     | `0.5`              | `trade_recommendations.R` | Drops underwater contracts from the offer pool (dump-asset guard) |
 
 ## Pending work / next session pickup
-1. **Phase 5 — trade matchmaker.** Start with `scripts/trade_recommendations.R`
-   that produces `data/processed/trade_targets.csv` per the spec above. Hook
-   it into Step 10 of `inseason_update.R` after `value_draft_picks.R`.
-2. **API endpoint** `GET /trade_targets/:my_team?partner=...&horizon=...` in
-   `server.js`, following the same `readProcessedCsv` pattern.
-3. **Phase 6 — Lovable Trade Lab tab.** Prompt-ready brief will be composed
-   here once the matchmaker is stable.
-4. **Phase 4 v2 — historical pick curve.** Pull `Draft 'XX` Google Sheet
+1. **Phase 6 — Lovable Trade Lab tab.** Compose the prompt-ready brief in
+   this doc, send to Lovable, iterate against the new `/trade_targets/...`
+   endpoint plus existing `/team_*` + `/draft_pick_values`.
+2. **Phase 4 v2 — historical pick curve.** Pull `Draft 'XX` Google Sheet
    tabs (2013–present), match to historical FG/SGPAR, smooth, replace the
    placeholder curve. Output schema stays the same.
+3. **Trade matchmaker iteration.** Possible v2 ideas once Lovable is live:
+   server-side horizon re-ranking (currently `?horizon=` is informational),
+   3-team chains, ILP offer selection, prospect inclusion.
+4. **`/inseason_pt_benchmarks` hitter regression.** All hitter rows return
+   `null` with `pool_size=0`. Root-cause in `compute_pt_benchmarks()` in
+   `scripts/inseason_proration.R`. Non-blocking; pitcher benchmarks are fine.
 
 ## Conventions
 * All R scripts read/write paths relative to the repo root and respect
