@@ -74,6 +74,28 @@ function getLatestFile(dirPath) {
   }
 }
 
+// Read the pipeline status file. Always returns a non-null object so callers
+// can safely do `data.status.last_updated` without null-checking. When the
+// file is missing or unparseable we return a `{status: "never_run",
+// last_updated: null}` shape; the frontend can still read `last_updated`
+// (it'll be `null`) without crashing.
+async function readStatusJsonSafe() {
+  try {
+    const content = await fs.readFile(
+      join("data", "processed", "inseason_status.json"),
+      "utf-8"
+    );
+    const parsed = JSON.parse(content);
+    if (parsed && typeof parsed === "object") {
+      if (parsed.last_updated === undefined) parsed.last_updated = null;
+      return parsed;
+    }
+  } catch (_) {
+    // fall through to default
+  }
+  return { status: "never_run", last_updated: null };
+}
+
 // Parse CSV text into an array of objects (header row → keys).
 //
 // Type coercion rules:
