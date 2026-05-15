@@ -667,6 +667,8 @@ tryCatch({
 
   run_trade_artifact("build_team_assets", "scripts/build_team_assets.R")
   run_trade_artifact("team_posture",      "scripts/team_posture.R")
+  # value_draft_picks depends on team_posture.csv produced by team_posture.R
+  run_trade_artifact("value_draft_picks", "scripts/value_draft_picks.R")
 
   # Status
   write_status("success",

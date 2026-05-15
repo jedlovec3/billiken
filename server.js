@@ -734,6 +734,52 @@ app.get("/team_keeper_pressure", async (c) => {
   }
 });
 
+// GET /draft_pick_values — next-season draft pick valuation per team and
+// round. Round-1 picks 1-7 are lottery-weighted (so the expected_overall_pick
+// is a probability-weighted blend); picks 8-10 are deterministic
+// (prior top-3 in reverse standings). Rounds 2+ are deterministic
+// reverse standings.
+//
+// Backed by data/processed/draft_pick_values.csv
+// (built by scripts/value_draft_picks.R).
+//
+// Optional query param: ?team=<substring> filters to one Billiken team
+// (case-insensitive substring match on billikenTeam).
+app.get("/draft_pick_values", async (c) => {
+  try {
+    const rows = await readProcessedCsv("draft_pick_values.csv");
+    const teamParam = c.req.query("team");
+    if (teamParam) {
+      const needle = decodeURIComponent(teamParam).toLowerCase();
+      const teamRows = rows.filter(
+        (r) =>
+          r.billikenTeam &&
+          String(r.billikenTeam).toLowerCase().includes(needle)
+      );
+      if (teamRows.length === 0) {
+        return c.json(
+          { error: `No draft_pick_values rows for team matching '${needle}'` },
+          { status: 404 }
+        );
+      }
+      return c.json({
+        team: teamRows[0].billikenTeam,
+        picks: teamRows,
+        count: teamRows.length,
+      });
+    }
+    return c.json({ draft_pick_values: rows, count: rows.length });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          "draft_pick_values.csv not available. Run scripts/value_draft_picks.R or wait for the next daily refresh.",
+      },
+      { status: 404 }
+    );
+  }
+});
+
 // Health check
 app.get("/health", (c) => {
   return c.json({ status: "ok", packagesReady });
