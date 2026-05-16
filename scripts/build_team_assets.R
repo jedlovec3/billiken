@@ -157,6 +157,16 @@ ros_detail <- if (file.exists(ros_path)) {
   tibble()
 }
 
+auction_ros_path <- resolve_path(file.path(
+  "data/raw",
+  paste0("auction_values_ros_", CURRENT_YEAR, ".csv")
+))
+auction_ros_raw <- if (file.exists(auction_ros_path)) {
+  read_csv(auction_ros_path, show_col_types = FALSE)
+} else {
+  tibble()
+}
+
 # ---------------------------------------------------------------------------
 # Roster skeleton: one row per rostered player
 # ---------------------------------------------------------------------------
@@ -350,6 +360,26 @@ assets <- assets %>%
              "sgpar_full_2026", "dollar_value_2026")
   )
 
+if (nrow(auction_ros_raw) > 0) {
+  ros_auction_lookup <- auction_ros_raw %>%
+    filter(!is.na(PlayerName), PlayerName != "") %>%
+    transmute(
+      Name = str_squish(as.character(PlayerName)),
+      fg_ros_auction_dollars = suppressWarnings(as.numeric(fg_auction_dollars)),
+      key_keep = normalize_name(Name),
+      key_strip = normalize_name(strip_suffixes(Name))
+    )
+
+  assets <- assets %>%
+    join_by_normalized_name(
+      ros_auction_lookup,
+      cols = c("fg_ros_auction_dollars")
+    )
+} else {
+  assets <- assets %>%
+    mutate(fg_ros_auction_dollars = NA_real_)
+}
+
 # ---------------------------------------------------------------------------
 # Optional: ROS detail
 # ---------------------------------------------------------------------------
@@ -388,6 +418,21 @@ if (nrow(ros_detail) > 0) {
       ros_W = NA_real_, ros_SV = NA_real_, ros_SO = NA_real_
     )
 }
+
+assets <- assets %>%
+  mutate(
+    dashboard_value_2026 = coalesce(
+      fg_ros_auction_dollars,
+      fg_auction_dollars,
+      dollar_value_2026
+    ),
+    dashboard_value_source = case_when(
+      !is.na(fg_ros_auction_dollars) ~ "fangraphs_ros_auction",
+      !is.na(fg_auction_dollars) ~ "fangraphs_fullseason_auction",
+      !is.na(dollar_value_2026) ~ "sgpar_standings_value",
+      TRUE ~ NA_character_
+    )
+  )
 
 # ---------------------------------------------------------------------------
 # Positions: pipe-separated eligibility string
@@ -538,7 +583,18 @@ multi_year <- assets %>%
 
 assets <- multi_year %>%
   mutate(
-    win_now_value = coalesce(dollar_value_2026 - salary_2026, 0),
+    # Legacy SGP-surplus column kept for back-compat and side-by-side comparison.
+    win_now_surplus_sgp = coalesce(dollar_value_2026 - salary_2026, 0),
+    # In-season trade math uses FanGraphs ROS auction dollars when available.
+    # Salary is intentionally NOT subtracted: in-season the current-year salary
+    # is sunk for the keeper who paid it in March and is not transferred mid-
+    # season, so the receiving team's win-now gain is the raw rest-of-season
+    # auction value of the player.
+    #
+    # For the ~30% of rostered players FanGraphs has no ROS auction price for
+    # (deep bench / minors / Triple-A callups), fall back to the legacy SGP
+    # surplus so the column is still populated.
+    win_now_value = coalesce(fg_ros_auction_dollars, win_now_surplus_sgp, 0),
     future_value  = coalesce(surplus_2027, 0) * GAMMA   +
                     coalesce(surplus_2028, 0) * GAMMA^2 +
                     coalesce(surplus_2029, 0) * GAMMA^3 +
@@ -574,12 +630,16 @@ team_assets <- assets %>%
     ros_sgp_2026,
     sgpar_full_2026,
     fg_auction_dollars,
+    fg_ros_auction_dollars,
     dollar_value_2026,
+    dashboard_value_2026,
+    dashboard_value_source,
     surplus_2026,
     sgpar_2027, sgpar_2028, sgpar_2029, sgpar_2030,
     dollar_value_2027, dollar_value_2028, dollar_value_2029, dollar_value_2030,
     salary_2027, salary_2028, salary_2029, salary_2030,
     surplus_2027, surplus_2028, surplus_2029, surplus_2030,
+    win_now_surplus_sgp,
     win_now_value,
     future_value,
     total_value,
@@ -599,6 +659,7 @@ write_csv(team_assets, out_path)
 
 n_total <- nrow(team_assets)
 n_with_value <- sum(!is.na(team_assets$dollar_value_2026))
+n_with_dashboard_value <- sum(!is.na(team_assets$dashboard_value_2026))
 n_with_contract <- sum(!is.na(team_assets$contract_status))
 n_with_positions <- sum(!is.na(team_assets$positions))
 
@@ -606,6 +667,8 @@ message(sprintf("Wrote %s", out_path))
 message(sprintf("  rows:                %d", n_total))
 message(sprintf("  with dollar_value:   %d (%.1f%%)",
                 n_with_value, 100 * n_with_value / n_total))
+message(sprintf("  with dashboard_value:%d (%.1f%%)",
+                n_with_dashboard_value, 100 * n_with_dashboard_value / n_total))
 message(sprintf("  with contract code:  %d (%.1f%%)",
                 n_with_contract, 100 * n_with_contract / n_total))
 message(sprintf("  with positions:      %d (%.1f%%)",

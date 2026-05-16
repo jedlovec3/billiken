@@ -71,10 +71,27 @@ both reflect the last keepable year (with the free `opt` year included) in
 Each player carries a value stream across 2026 → 2030 plus three derived
 aggregates:
 
-* `win_now_value` — 2026 surplus only.
+* `win_now_value` — in-season production value. **As of v1.1** this is the
+  FanGraphs ROS auction-calculator dollar value (`fg_ros_auction_dollars`)
+  when available, falling back to the legacy SGP surplus
+  (`dollar_value_2026 - salary_2026`, also exposed as `win_now_surplus_sgp`)
+  for the ~30% of rostered players FanGraphs has no ROS price for. Salary is
+  intentionally NOT subtracted in the FG ROS path: in-season, the current-
+  year salary is sunk for whichever team paid it in March; the receiving
+  team's win-now gain is the raw rest-of-season auction value of the
+  player. This switch fixes the prior over-valuation of closers (Saves is
+  a tiny category in our scoring and the SGP standings-value model gave
+  RPs implausibly high \$/yr) — closers drop ~3-4x while elite hitters
+  and SP stay roughly comparable. The legacy SGP-surplus column is
+  retained on every row as `win_now_surplus_sgp` for side-by-side checks.
 * `future_value`  — `γ * surplus_2027 + γ² * surplus_2028 + ...` with default
-  γ = 0.7. Includes the drop-penalty haircut where applicable.
+  γ = 0.7. Includes the drop-penalty haircut where applicable. Per-year
+  surplus uses the SGP-aged full-season values; switching the future-year
+  baseline to FG full-season auction values is a candidate v2 iteration.
 * `total_value`   — `win_now_value + future_value`.
+* `dashboard_value_2026` / `dashboard_value_source` — the same value the
+  Lovable dashboard renders as "Value". Coalesces ROS → FG full-season →
+  SGP standings, with the chosen source tagged so the UI can label it.
 
 Aging curve: hold flat ages 25–30, 5%/yr decay 31–33, 10%/yr after 33.
 Birthdates come from `player_birthdates.csv`, populated once via the MLB
@@ -131,7 +148,7 @@ to 2013), compute per-pick SGPAR/dollar surplus realized, and smooth (LOESS
 or monotone spline). Output schema is intentionally stable so the matchmaker
 doesn't care which curve produced it.
 
-### Phase 5 — Trade matchmaker — ✅ v1 shipped
+### Phase 5 — Trade matchmaker — ✅ v1.1 shipped (FG ROS values)
 **Script:** `scripts/trade_recommendations.R`
 **Output:** `data/processed/trade_targets.csv`
 **API:** `GET /trade_targets/:my_team?partner=<team>&horizon=win_now|future|balanced`
@@ -157,7 +174,12 @@ For each pair `(myTeam, otherTeam)`:
 
 Knobs (top of `trade_recommendations.R`): `TRADE_PREMIUM=1.0`,
 `MAX_OFFER_SIZE=4`, `MIN_TARGET_VALUE_TO_ME=3.0`,
-`MIN_ASSET_V_TO_PARTNER=0.5`.
+`MIN_ASSET_V_TO_PARTNER=0.5`, `MIN_OFFER_SIZE=1`.
+
+**v1.1 update:** `MIN_OFFER_SIZE=1` and a floored `need = max(target.v_to_partner + TRADE_PREMIUM, TRADE_PREMIUM)` guard against "free target" trades that
+emerged once `win_now_value` switched to FG ROS. When a partner has a star
+on a heavily underwater extension their `v_to_partner` can go negative;
+without the guard the greedy would propose acquiring them for zero assets.
 
 Two-team trades only in v1. Three-team is a future search-routine change;
 the data model is already 3-team-ready.
@@ -208,7 +230,12 @@ every daily run via Step 10 of `scripts/inseason_update.R`.
 
 Empty CSV cells deserialize to JSON `null` (not `0`) — the in-server
 `csvToJson` was hardened so the Lovable frontend can safely
-`String(x).split("|")` on optional fields without first-row breakage.
+`String(x).split("|")` on optional fields without first-row breakage. The
+parser is now also quote-aware (handles RFC-4180 quoted fields with
+embedded commas), which fixed a regression where `proposed_offer` rows
+containing `"... overall, $X.Y)"` were shifting every downstream column
+right by one position and causing the Lovable frontend to drop entire
+trade rows.
 
 ## Open knobs (defaults baked in, easy to tune)
 | Knob | Default | Where | What it does |
@@ -223,6 +250,8 @@ Empty CSV cells deserialize to JSON `null` (not `0`) — the in-server
 | Max offer size             | `4`                | `trade_recommendations.R` | Greedy stops adding assets once we hit this many |
 | Min target v_to_me         | `3.0`              | `trade_recommendations.R` | Don't waste rows on barely-worth-it targets |
 | Min asset v_to_partner     | `0.5`              | `trade_recommendations.R` | Drops underwater contracts from the offer pool (dump-asset guard) |
+| Min offer size             | `1`                | `trade_recommendations.R` | Every accepted trade must include at least one outgoing asset (free-target guard) |
+| Value source preference    | FG ROS > FG full > SGP | `build_team_assets.R` | Coalesce order for `win_now_value` and `dashboard_value_2026` |
 
 ## Pending work / next session pickup
 1. **Custom offer builder (top next-up).** Add the drag/select UI on my side

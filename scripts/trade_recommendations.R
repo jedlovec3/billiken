@@ -92,6 +92,16 @@ MIN_TARGET_VALUE_TO_ME <- 3.0
 # these out prevents the greedy from gaming the offer with dump pieces.
 MIN_ASSET_V_TO_PARTNER <- 0.5
 
+# Every accepted trade must include at least this many assets going from
+# my side to the partner. Guards against "free target" trades that emerge
+# when a partner-side target has negative v_to_partner (e.g. a star on a
+# heavily underwater extension): the partner's `need` threshold goes
+# negative, the greedy adds 0 assets, and the matchmaker proposes giving
+# up literally nothing for the player. No real GM accepts "you take my
+# bad contract and I give you nothing," even if dropping the player
+# would cost them the drop penalty.
+MIN_OFFER_SIZE <- 1L
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -222,14 +232,20 @@ for (me in teams) {
 
     for (i in seq_len(nrow(targets))) {
       target <- targets[i, ]
-      need   <- target$v_to_partner + TRADE_PREMIUM
+      # Floor `need` at TRADE_PREMIUM so that even when target.v_to_partner
+      # is negative (partner sees the player as a liability) we still
+      # require the offer to clear a minimal positive bar. Without this,
+      # the greedy can satisfy `incoming_to_partner >= need` with zero
+      # assets and we'd propose getting the player for nothing.
+      need   <- max(target$v_to_partner + TRADE_PREMIUM, TRADE_PREMIUM)
 
       offer_rows         <- list()
       incoming_to_partner <- 0
       outgoing_to_me      <- 0
 
       for (j in seq_len(nrow(offer_pool))) {
-        if (incoming_to_partner >= need) break
+        if (incoming_to_partner >= need &&
+            length(offer_rows) >= MIN_OFFER_SIZE) break
         if (length(offer_rows) >= MAX_OFFER_SIZE) break
 
         a <- offer_pool[j, ]
@@ -238,6 +254,7 @@ for (me in teams) {
         outgoing_to_me      <- outgoing_to_me      + a$v_to_me
       }
 
+      if (length(offer_rows) < MIN_OFFER_SIZE) next
       if (incoming_to_partner < need) next
 
       offer_df            <- bind_rows(offer_rows)
