@@ -165,10 +165,7 @@ pick_assets <- draft_picks %>%
     billikenTeam,
     asset_type   = "pick",
     asset_id     = sprintf("pick_%d_R%02d", season, round),
-    asset_label  = sprintf("%d R%d pick (#%.1f overall, $%.1f)",
-                           season, round,
-                           expected_overall_pick,
-                           expected_dollar_value),
+    asset_label  = sprintf("%d R%d pick", season, round),
     win_now_value = 0,                            # picks pay off in NEXT_YEAR
     future_value  = expected_dollar_value
   )
@@ -257,14 +254,14 @@ for (me in teams) {
         target_player         = target$asset_id,
         target_v_to_me        = target$v_to_me,
         target_v_to_partner   = target$v_to_partner,
-        proposed_offer        = paste(offer_df$asset_label, collapse = " | "),
+        proposed_offer        = paste(offer_df$asset_label, collapse = "|"),
         proposed_offer_ids    = paste(offer_df$asset_id,    collapse = "|"),
         offer_size            = nrow(offer_df),
         offer_v_to_partner    = incoming_to_partner,
         offer_v_to_me         = outgoing_to_me,
         my_value_delta        = my_value_delta,
         partner_value_delta   = partner_value_delta,
-        notes                 = sprintf("%s sends %s -> %s; postures %s/%s",
+        notes                 = sprintf("%s receives %s from %s; postures %s/%s",
                                         me, target$asset_id, partner,
                                         my_w$posture, p_w$posture)
       )

@@ -225,16 +225,20 @@ Empty CSV cells deserialize to JSON `null` (not `0`) — the in-server
 | Min asset v_to_partner     | `0.5`              | `trade_recommendations.R` | Drops underwater contracts from the offer pool (dump-asset guard) |
 
 ## Pending work / next session pickup
-1. **Phase 6 — Lovable Trade Lab tab.** Compose the prompt-ready brief in
-   this doc, send to Lovable, iterate against the new `/trade_targets/...`
-   endpoint plus existing `/team_*` + `/draft_pick_values`.
-2. **Phase 4 v2 — historical pick curve.** Pull `Draft 'XX` Google Sheet
+1. **Custom offer builder (top next-up).** Add the drag/select UI on my side
+   so I can build my own offers against a selected partner, with running
+   my-side and partner-side value deltas. The existing suggested trades panel
+   should remain as the one-click starting point.
+2. **Phase 6 — Lovable Trade Lab tab polish.** Iterate the current tab
+   against `/trade_targets/...`, `/team_*`, and `/draft_pick_values`, now
+   that the initial visualization exists.
+3. **Phase 4 v2 — historical pick curve.** Pull `Draft 'XX` Google Sheet
    tabs (2013–present), match to historical FG/SGPAR, smooth, replace the
    placeholder curve. Output schema stays the same.
-3. **Trade matchmaker iteration.** Possible v2 ideas once Lovable is live:
+4. **Trade matchmaker iteration.** Possible v2 ideas once Lovable is live:
    server-side horizon re-ranking (currently `?horizon=` is informational),
    3-team chains, ILP offer selection, prospect inclusion.
-4. **`/inseason_pt_benchmarks` hitter regression.** All hitter rows return
+5. **`/inseason_pt_benchmarks` hitter regression.** All hitter rows return
    `null` with `pool_size=0`. Root-cause in `compute_pt_benchmarks()` in
    `scripts/inseason_proration.R`. Non-blocking; pitcher benchmarks are fine.
 

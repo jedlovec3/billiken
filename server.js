@@ -107,12 +107,46 @@ async function readStatusJsonSafe() {
 // rewrite blank string cells (e.g. an empty `shed_names` or a missing
 // `age_2026`) into the integer 0, which breaks any frontend that does
 // `row.shed_names.split("|")` or treats `age_2026` as a real age.
+function parseCsvRow(line) {
+  const out = [];
+  let cur = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+
+    if (inQuotes) {
+      if (ch === "\"") {
+        if (line[i + 1] === "\"") {
+          cur += "\"";
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += ch;
+      }
+    } else {
+      if (ch === "\"") {
+        inQuotes = true;
+      } else if (ch === ",") {
+        out.push(cur);
+        cur = "";
+      } else {
+        cur += ch;
+      }
+    }
+  }
+
+  out.push(cur);
+  return out.map((v) => v.trim());
+}
 function csvToJson(csv) {
-  const lines = csv.trim().split("\n");
+  const lines = csv.replace(/\r\n/g, "\n").trim().split("\n");
   if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+  const headers = parseCsvRow(lines[0]);
   return lines.slice(1).map((line) => {
-    const vals = line.split(",").map((v) => v.trim().replace(/^"|"$/g, ""));
+    const vals = parseCsvRow(line);
     const obj = {};
     headers.forEach((h, i) => {
       const raw = vals[i];
@@ -661,12 +695,65 @@ async function readProcessedCsv(fileName) {
   return csvToJson(content);
 }
 
+function asFiniteNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function resolveDashboardValue(row) {
+  const explicitValue = asFiniteNumber(row.dashboard_value_2026);
+  const explicitSource = row.dashboard_value_source
+    ? String(row.dashboard_value_source)
+    : null;
+  if (explicitValue !== null) {
+    return {
+      value: explicitValue,
+      source:
+        explicitSource ||
+        (asFiniteNumber(row.fg_ros_auction_dollars) !== null
+          ? "fangraphs_ros_auction"
+          : asFiniteNumber(row.fg_auction_dollars) !== null
+          ? "fangraphs_fullseason_auction"
+          : "sgpar_standings_value"),
+    };
+  }
+
+  const ros = asFiniteNumber(row.fg_ros_auction_dollars);
+  if (ros !== null) {
+    return { value: ros, source: "fangraphs_ros_auction" };
+  }
+
+  const full = asFiniteNumber(row.fg_auction_dollars);
+  if (full !== null) {
+    return { value: full, source: "fangraphs_fullseason_auction" };
+  }
+
+  const model = asFiniteNumber(row.dollar_value_2026);
+  if (model !== null) {
+    return { value: model, source: "sgpar_standings_value" };
+  }
+
+  return { value: null, source: null };
+}
+
+function shapeTeamAssetRow(row) {
+  const resolved = resolveDashboardValue(row);
+  return {
+    ...row,
+    dashboard_value_2026: resolved.value,
+    dashboard_value_source: resolved.source,
+    value: resolved.value,
+    value_source: resolved.source,
+  };
+}
+
 // GET /team_assets — every rostered player across the league with contract,
 // salary, value, and surplus columns. Backed by
 // data/processed/team_assets.csv (built by scripts/build_team_assets.R).
 app.get("/team_assets", async (c) => {
   try {
-    const rows = await readProcessedCsv("team_assets.csv");
+    const rows = (await readProcessedCsv("team_assets.csv")).map(shapeTeamAssetRow);
     return c.json({ team_assets: rows, count: rows.length });
   } catch (error) {
     return c.json(
@@ -685,7 +772,7 @@ app.get("/team_assets", async (c) => {
 app.get("/team_assets/:team", async (c) => {
   try {
     const teamParam = decodeURIComponent(c.req.param("team")).toLowerCase();
-    const rows = await readProcessedCsv("team_assets.csv");
+    const rows = (await readProcessedCsv("team_assets.csv")).map(shapeTeamAssetRow);
     const teamRows = rows.filter(
       (r) =>
         r.billikenTeam &&
