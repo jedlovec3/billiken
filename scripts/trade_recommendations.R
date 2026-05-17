@@ -171,7 +171,8 @@ player_assets <- team_assets %>%
                            coalesce(salary_2026, 0),
                            paste0(coalesce(years_remaining, 0L), "y")),
     win_now_value = coalesce(win_now_value, 0),
-    future_value  = coalesce(future_value,  0)
+    future_value  = coalesce(future_value,  0),
+    is_expiring   = coalesce(is_expiring_after_2026, FALSE)
   )
 
 pick_assets <- draft_picks %>%
@@ -182,7 +183,8 @@ pick_assets <- draft_picks %>%
     asset_id     = sprintf("pick_%d_R%02d", season, round),
     asset_label  = sprintf("%d R%d pick", season, round),
     win_now_value = 0,                            # picks pay off in NEXT_YEAR
-    future_value  = expected_dollar_value
+    future_value  = expected_dollar_value,
+    is_expiring   = FALSE
   )
 
 all_assets <- bind_rows(player_assets, pick_assets)
@@ -203,12 +205,13 @@ select_targets <- function(partner_priced, my_posture) {
     mutate(get_arb = v_to_me - v_to_partner)
 
   if (my_posture == "rebuild") {
+    # Rebuilders want future assets: young keepers, extended deals, picks.
     players %>%
       filter(
-        v_to_me >= MIN_TARGET_VALUE_TO_ME,
+        future_value >= MIN_TARGET_VALUE_TO_ME,
         get_arb >= MIN_TARGET_ARB_REBUILD
       ) %>%
-      arrange(desc(v_to_me)) %>%
+      arrange(desc(future_value), desc(v_to_me)) %>%
       head(TOP_N_CANDIDATE_TARGETS)
   } else {
     players %>%
@@ -245,7 +248,27 @@ build_trade_row <- function(target, offer_pool, my_w, p_w, me, partner,
   my_value_delta      <- target$v_to_me      - outgoing_to_me
   partner_value_delta <- incoming_to_partner - target$v_to_partner
 
+  offer_win_now  <- sum(offer_df$win_now_value)
+  offer_future   <- sum(offer_df$future_value)
+  my_win_now_delta    <- target$win_now_value - offer_win_now
+  my_future_delta     <- target$future_value  - offer_future
+  # Contender should gain win-now from the swap (veterans in, win-now out).
+  partner_win_now_delta <- offer_win_now - target$win_now_value
+
   if (trade_quality == "strong" && my_value_delta <= 0) return(NULL)
+
+  # Rebuild: require positive future-value net; don't dump future for win-now.
+  if (my_w$posture == "rebuild") {
+    if (my_future_delta <= 0) return(NULL)
+    if (p_w$posture %in% c("contender", "bubble") && partner_win_now_delta <= 0) {
+      return(NULL)
+    }
+  }
+
+  # Contender initiating: require positive win-now net.
+  if (my_w$posture %in% c("contender", "bubble")) {
+    if (my_win_now_delta <= 0) return(NULL)
+  }
 
   tibble(
     my_team               = me,
@@ -262,6 +285,9 @@ build_trade_row <- function(target, offer_pool, my_w, p_w, me, partner,
     offer_v_to_me         = outgoing_to_me,
     my_value_delta        = my_value_delta,
     partner_value_delta   = partner_value_delta,
+    my_win_now_delta      = my_win_now_delta,
+    my_future_delta       = my_future_delta,
+    partner_win_now_delta = partner_win_now_delta,
     trade_quality         = trade_quality,
     notes                 = sprintf(
       "%s receives %s from %s; postures %s/%s; %s",
@@ -296,8 +322,20 @@ for (me in teams) {
     # value to them). Drops cap albatrosses out of the candidate pool.
     offer_pool <- my_priced %>%
       filter(v_to_partner >= MIN_ASSET_V_TO_PARTNER) %>%
-      mutate(give_arb = v_to_partner - v_to_me) %>%
-      arrange(desc(give_arb))
+      mutate(give_arb = v_to_partner - v_to_me)
+
+    # Rebuild selling to contenders: lead with expiring vets (win-now, no future).
+    if (my_w$posture == "rebuild" &&
+        p_w$posture %in% c("contender", "bubble")) {
+      offer_pool <- offer_pool %>%
+        arrange(
+          desc(coalesce(is_expiring, FALSE)),
+          desc(win_now_value / pmax(future_value, 0.25)),
+          desc(give_arb)
+        )
+    } else {
+      offer_pool <- offer_pool %>% arrange(desc(give_arb))
+    }
 
     targets <- select_targets(partner_priced, my_w$posture)
     if (nrow(targets) == 0) next
@@ -313,8 +351,9 @@ for (me in teams) {
       if (!is.null(row)) pair_trades[[length(pair_trades) + 1]] <- row
     }
 
-    # Stretch pass: fill up to TOP_N_PER_PARTNER when strict trades are thin.
-    if (length(pair_trades) < TOP_N_PER_PARTNER && nrow(offer_pool) > 0) {
+    # Stretch pass: only for non-rebuild (rebuild trades must clear future delta).
+    if (my_w$posture != "rebuild" &&
+        length(pair_trades) < TOP_N_PER_PARTNER && nrow(offer_pool) > 0) {
       existing_targets <- if (length(pair_trades) > 0) {
         map_chr(pair_trades, ~ .x$target_player)
       } else {
@@ -334,8 +373,9 @@ for (me in teams) {
       }
     }
 
-    # Last resort: top v_to_me targets with any valid offer.
-    if (length(pair_trades) == 0 && nrow(offer_pool) > 0) {
+    # Last resort (non-rebuild only): top v_to_me targets with any valid offer.
+    if (my_w$posture != "rebuild" &&
+        length(pair_trades) == 0 && nrow(offer_pool) > 0) {
       fallback_targets <- partner_priced %>%
         filter(asset_type == "player", v_to_me >= MIN_TARGET_VALUE_TO_ME) %>%
         arrange(desc(v_to_me)) %>%
@@ -364,12 +404,15 @@ if (nrow(trade_targets) == 0) {
 } else {
   trade_targets <- trade_targets %>%
     group_by(my_team, partner_team) %>%
-    arrange(desc(trade_quality == "strong"),
-            desc(trade_quality == "stretch"),
-            desc(my_value_delta)) %>%
+    arrange(
+      desc(trade_quality == "strong"),
+      desc(trade_quality == "stretch"),
+      desc(coalesce(my_future_delta, my_value_delta)),
+      desc(my_value_delta)
+    ) %>%
     slice_head(n = TOP_N_PER_PARTNER) %>%
     ungroup() %>%
-    arrange(my_team, partner_team, desc(my_value_delta))
+    arrange(my_team, partner_team, desc(coalesce(my_future_delta, my_value_delta)))
 }
 
 # ---------------------------------------------------------------------------

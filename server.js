@@ -913,14 +913,14 @@ function sortTradeTargets(trades, horizon) {
   if (h === "win_now") {
     sorted.sort(
       (a, b) =>
-        (asFiniteNumber(b.target_v_to_me) ?? 0) -
-        (asFiniteNumber(a.target_v_to_me) ?? 0)
+        (asFiniteNumber(b.my_win_now_delta) ?? 0) -
+        (asFiniteNumber(a.my_win_now_delta) ?? 0)
     );
   } else if (h === "future") {
     sorted.sort(
       (a, b) =>
-        (asFiniteNumber(b.my_value_delta) ?? 0) -
-        (asFiniteNumber(a.my_value_delta) ?? 0)
+        (asFiniteNumber(b.my_future_delta) ?? 0) -
+        (asFiniteNumber(a.my_future_delta) ?? 0)
     );
   } else {
     sorted.sort(
@@ -1098,6 +1098,13 @@ app.post("/evaluate_trade", async (c) => {
     const partner_net =
       partnerReceiveVals.weighted_total - partnerGiveVals.weighted_total;
 
+    const my_win_now_net = myReceiveVals.win_now - myGiveVals.win_now;
+    const my_future_net = myReceiveVals.future - myGiveVals.future;
+    const partner_win_now_net =
+      partnerReceiveVals.win_now - partnerGiveVals.win_now;
+    const partner_future_net =
+      partnerReceiveVals.future - partnerGiveVals.future;
+
     return c.json({
       my_team: myPostureRow.billikenTeam,
       partner_team: partnerPostureRow.billikenTeam,
@@ -1109,6 +1116,16 @@ app.post("/evaluate_trade", async (c) => {
       partner_receive: partnerReceiveVals,
       my_net,
       partner_net,
+      my_win_now_net,
+      my_future_net,
+      partner_win_now_net,
+      partner_future_net,
+      guidance:
+        myPostureRow.posture === "rebuild"
+          ? "Rebuild: prioritize my_future_net > 0; send expiring vets for partner_win_now_net > 0."
+          : myPostureRow.posture === "contender" || myPostureRow.posture === "bubble"
+          ? "Contender: prioritize my_win_now_net > 0."
+          : null,
       unresolved_my_ids: myIds.filter(
         (id) => !myGive.some((a) => a.asset_id === id || a.Name === id)
       ),
