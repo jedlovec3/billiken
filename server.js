@@ -889,15 +889,53 @@ app.get("/draft_pick_values", async (c) => {
   }
 });
 
+// Posture weights (mirror scripts/trade_recommendations.R POSTURE_WEIGHTS).
+const POSTURE_WEIGHTS = {
+  contender: { w_win_now: 1.0, w_future: 0.3 },
+  bubble: { w_win_now: 0.8, w_future: 0.5 },
+  mid: { w_win_now: 0.6, w_future: 0.7 },
+  rebuild: { w_win_now: 0.2, w_future: 1.0 },
+};
+
+function postureWeights(posture) {
+  return POSTURE_WEIGHTS[posture] || POSTURE_WEIGHTS.mid;
+}
+
+function weightedAssetValue(asset, weights) {
+  const wn = asFiniteNumber(asset.win_now_value) ?? 0;
+  const fut = asFiniteNumber(asset.future_value) ?? 0;
+  return weights.w_win_now * wn + weights.w_future * fut;
+}
+
+function sortTradeTargets(trades, horizon) {
+  const h = (horizon || "balanced").toLowerCase();
+  const sorted = [...trades];
+  if (h === "win_now") {
+    sorted.sort(
+      (a, b) =>
+        (asFiniteNumber(b.target_v_to_me) ?? 0) -
+        (asFiniteNumber(a.target_v_to_me) ?? 0)
+    );
+  } else if (h === "future") {
+    sorted.sort(
+      (a, b) =>
+        (asFiniteNumber(b.my_value_delta) ?? 0) -
+        (asFiniteNumber(a.my_value_delta) ?? 0)
+    );
+  } else {
+    sorted.sort(
+      (a, b) =>
+        (asFiniteNumber(b.my_value_delta) ?? 0) -
+        (asFiniteNumber(a.my_value_delta) ?? 0)
+    );
+  }
+  return sorted;
+}
+
 // GET /trade_targets/:my_team — ranked two-team trade suggestions where
 // :my_team is the side initiating the trade. Optional query params:
 //   partner=<substring>    filter to trades against one partner team
 //   horizon=win_now|future|balanced (default balanced)
-//                          re-sort results by my-side metric: win_now uses
-//                          partner.win_now_value lost vs target.win_now_value
-//                          gained; future uses the future_value analogue;
-//                          balanced (default) uses the precomputed posture-
-//                          weighted my_value_delta.
 //
 // Backed by data/processed/trade_targets.csv (built by
 // scripts/trade_recommendations.R).
@@ -920,24 +958,25 @@ app.get("/trade_targets/:my_team", async (c) => {
       );
     }
 
-    if (filtered.length === 0) {
-      return c.json(
-        {
-          error: `No trade_targets rows for my_team matching '${myTeamRaw}'`,
-        },
-        { status: 404 }
-      );
-    }
-
-    // Horizon is informational for the client today; the CSV already encodes
-    // posture-weighted deltas. Future enhancement: re-rank server-side.
     const horizon = (c.req.query("horizon") || "balanced").toLowerCase();
+    const myTeam =
+      filtered.length > 0
+        ? filtered[0].my_team
+        : rows.find((r) =>
+            r.my_team && String(r.my_team).toLowerCase().includes(myTeamRaw)
+          )?.my_team ?? null;
+
+    const trades = sortTradeTargets(filtered, horizon);
 
     return c.json({
-      my_team: filtered[0].my_team,
+      my_team: myTeam,
       horizon,
-      trades: filtered,
-      count: filtered.length,
+      trades,
+      count: trades.length,
+      hint:
+        trades.length === 0
+          ? "No automated trade matches for this filter. Try another partner or use POST /evaluate_trade for a custom offer."
+          : null,
     });
   } catch (error) {
     return c.json(
@@ -946,6 +985,145 @@ app.get("/trade_targets/:my_team", async (c) => {
           "trade_targets.csv not available. Run scripts/trade_recommendations.R or wait for the next daily refresh.",
       },
       { status: 404 }
+    );
+  }
+});
+
+// POST /evaluate_trade — posture-weighted value for a manual two-team trade.
+// Body JSON:
+//   { my_team, partner_team, my_asset_ids: [], partner_asset_ids: [] }
+// Asset ids are player Names or pick ids like pick_2027_R02.
+app.post("/evaluate_trade", async (c) => {
+  try {
+    const body = await c.req.json();
+    const myTeam = body.my_team;
+    const partnerTeam = body.partner_team;
+    const myIds = Array.isArray(body.my_asset_ids) ? body.my_asset_ids : [];
+    const partnerIds = Array.isArray(body.partner_asset_ids)
+      ? body.partner_asset_ids
+      : [];
+
+    if (!myTeam || !partnerTeam) {
+      return c.json(
+        { error: "my_team and partner_team are required" },
+        { status: 400 }
+      );
+    }
+
+    const [assets, postureRows, pickRows] = await Promise.all([
+      readProcessedCsv("team_assets.csv"),
+      readProcessedCsv("team_posture.csv"),
+      readProcessedCsv("draft_pick_values.csv").catch(() => []),
+    ]);
+
+    const myPostureRow = postureRows.find(
+      (r) =>
+        r.billikenTeam &&
+        String(r.billikenTeam).toLowerCase().includes(String(myTeam).toLowerCase())
+    );
+    const partnerPostureRow = postureRows.find(
+      (r) =>
+        r.billikenTeam &&
+        String(r.billikenTeam)
+          .toLowerCase()
+          .includes(String(partnerTeam).toLowerCase())
+    );
+
+    if (!myPostureRow || !partnerPostureRow) {
+      return c.json({ error: "Could not resolve team posture for both sides" }, {
+        status: 400,
+      });
+    }
+
+    const myWeights = postureWeights(myPostureRow.posture);
+    const partnerWeights = postureWeights(partnerPostureRow.posture);
+
+    const nextYear = new Date().getFullYear() + 1;
+    const pickAssets = pickRows
+      .filter((p) => Number(p.season) === nextYear)
+      .map((p) => ({
+        billikenTeam: p.billikenTeam,
+        asset_id: `pick_${p.season}_R${String(p.round).padStart(2, "0")}`,
+        Name: `pick_${p.season}_R${String(p.round).padStart(2, "0")}`,
+        win_now_value: 0,
+        future_value: asFiniteNumber(p.expected_dollar_value) ?? 0,
+        asset_type: "pick",
+      }));
+
+    const universe = [
+      ...assets.map((a) => ({
+        ...a,
+        asset_id: a.Name,
+        asset_type: "player",
+      })),
+      ...pickAssets,
+    ];
+
+    const resolveAssets = (teamNeedle, ids) =>
+      ids.map((id) => {
+        const row = universe.find(
+          (a) =>
+            a.billikenTeam &&
+            String(a.billikenTeam).toLowerCase().includes(String(teamNeedle).toLowerCase()) &&
+            (a.asset_id === id || a.Name === id)
+        );
+        return row || null;
+      });
+
+    const myGive = resolveAssets(myTeam, myIds).filter(Boolean);
+    const partnerGive = resolveAssets(partnerTeam, partnerIds).filter(Boolean);
+
+    const sumSide = (rows, weights) => {
+      let winNow = 0;
+      let future = 0;
+      let total = 0;
+      for (const a of rows) {
+        const wn = asFiniteNumber(a.win_now_value) ?? 0;
+        const fut = asFiniteNumber(a.future_value) ?? 0;
+        winNow += wn;
+        future += fut;
+        total += weightedAssetValue(a, weights);
+      }
+      return { win_now: winNow, future, weighted_total: total, count: rows.length };
+    };
+
+    const myGiveVals = sumSide(myGive, myWeights);
+    const partnerGiveVals = sumSide(partnerGive, partnerWeights);
+
+    const myReceiveVals = sumSide(partnerGive, myWeights);
+    const partnerReceiveVals = sumSide(myGive, partnerWeights);
+
+    const my_net =
+      myReceiveVals.weighted_total - myGiveVals.weighted_total;
+    const partner_net =
+      partnerReceiveVals.weighted_total - partnerGiveVals.weighted_total;
+
+    return c.json({
+      my_team: myPostureRow.billikenTeam,
+      partner_team: partnerPostureRow.billikenTeam,
+      my_posture: myPostureRow.posture,
+      partner_posture: partnerPostureRow.posture,
+      my_give: myGiveVals,
+      my_receive: myReceiveVals,
+      partner_give: partnerGiveVals,
+      partner_receive: partnerReceiveVals,
+      my_net,
+      partner_net,
+      unresolved_my_ids: myIds.filter(
+        (id) => !myGive.some((a) => a.asset_id === id || a.Name === id)
+      ),
+      unresolved_partner_ids: partnerIds.filter(
+        (id) => !partnerGive.some((a) => a.asset_id === id || a.Name === id)
+      ),
+    });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          error.message ||
+          "evaluate_trade failed. Ensure team_assets.csv exists.",
+      },
+      { status: 500 }
     );
   }
 });

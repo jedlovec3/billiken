@@ -83,7 +83,12 @@ TOP_N_CANDIDATE_TARGETS <- 20L
 TOP_N_PER_PARTNER     <- 5L
 
 # Don't bother proposing trades for sub-threshold targets (noise).
-MIN_TARGET_VALUE_TO_ME <- 3.0
+MIN_TARGET_VALUE_TO_ME <- 1.5
+
+# Rebuilders often "lose" on posture-weighted arb vs contenders for the same
+# prospect (partner weights win-now higher). Allow small negative arb and
+# rank by v_to_me instead of get_arb for rebuild posture.
+MIN_TARGET_ARB_REBUILD <- -2.0
 
 # Don't offer assets the partner wouldn't actually take. An asset with
 # v_to_partner <= 0 is a net liability to the receiver (e.g. a player on a
@@ -191,6 +196,80 @@ attach_team_values <- function(assets_df, my_w, p_w) {
     )
 }
 
+# Partner players to consider as acquisition targets (posture-aware).
+select_targets <- function(partner_priced, my_posture) {
+  players <- partner_priced %>%
+    filter(asset_type == "player") %>%
+    mutate(get_arb = v_to_me - v_to_partner)
+
+  if (my_posture == "rebuild") {
+    players %>%
+      filter(
+        v_to_me >= MIN_TARGET_VALUE_TO_ME,
+        get_arb >= MIN_TARGET_ARB_REBUILD
+      ) %>%
+      arrange(desc(v_to_me)) %>%
+      head(TOP_N_CANDIDATE_TARGETS)
+  } else {
+    players %>%
+      filter(get_arb > 0, v_to_me >= MIN_TARGET_VALUE_TO_ME) %>%
+      arrange(desc(get_arb)) %>%
+      head(TOP_N_CANDIDATE_TARGETS)
+  }
+}
+
+# Greedy offer for one target; returns a one-row tibble or NULL.
+build_trade_row <- function(target, offer_pool, my_w, p_w, me, partner,
+                            trade_quality = "strong") {
+  need <- max(target$v_to_partner + TRADE_PREMIUM, TRADE_PREMIUM)
+
+  offer_rows          <- list()
+  incoming_to_partner <- 0
+  outgoing_to_me      <- 0
+
+  for (j in seq_len(nrow(offer_pool))) {
+    if (incoming_to_partner >= need &&
+        length(offer_rows) >= MIN_OFFER_SIZE) break
+    if (length(offer_rows) >= MAX_OFFER_SIZE) break
+
+    a <- offer_pool[j, ]
+    offer_rows[[length(offer_rows) + 1]] <- a
+    incoming_to_partner <- incoming_to_partner + a$v_to_partner
+    outgoing_to_me      <- outgoing_to_me      + a$v_to_me
+  }
+
+  if (length(offer_rows) < MIN_OFFER_SIZE) return(NULL)
+  if (incoming_to_partner < need) return(NULL)
+
+  offer_df            <- bind_rows(offer_rows)
+  my_value_delta      <- target$v_to_me      - outgoing_to_me
+  partner_value_delta <- incoming_to_partner - target$v_to_partner
+
+  if (trade_quality == "strong" && my_value_delta <= 0) return(NULL)
+
+  tibble(
+    my_team               = me,
+    my_posture            = my_w$posture,
+    partner_team          = partner,
+    partner_posture       = p_w$posture,
+    target_player         = target$asset_id,
+    target_v_to_me        = target$v_to_me,
+    target_v_to_partner   = target$v_to_partner,
+    proposed_offer        = paste(offer_df$asset_label, collapse = "|"),
+    proposed_offer_ids    = paste(offer_df$asset_id,    collapse = "|"),
+    offer_size            = nrow(offer_df),
+    offer_v_to_partner    = incoming_to_partner,
+    offer_v_to_me         = outgoing_to_me,
+    my_value_delta        = my_value_delta,
+    partner_value_delta   = partner_value_delta,
+    trade_quality         = trade_quality,
+    notes                 = sprintf(
+      "%s receives %s from %s; postures %s/%s; %s",
+      me, target$asset_id, partner, my_w$posture, p_w$posture, trade_quality
+    )
+  )
+}
+
 # ---------------------------------------------------------------------------
 # Main loop: per (me, partner) pair, propose offers for top arbitrage targets
 # ---------------------------------------------------------------------------
@@ -220,68 +299,60 @@ for (me in teams) {
       mutate(give_arb = v_to_partner - v_to_me) %>%
       arrange(desc(give_arb))
 
-    # Targets are partner's players that I value strictly more than they do.
-    targets <- partner_priced %>%
-      filter(asset_type == "player") %>%
-      mutate(get_arb = v_to_me - v_to_partner) %>%
-      filter(get_arb > 0, v_to_me >= MIN_TARGET_VALUE_TO_ME) %>%
-      arrange(desc(get_arb)) %>%
-      head(TOP_N_CANDIDATE_TARGETS)
-
+    targets <- select_targets(partner_priced, my_w$posture)
     if (nrow(targets) == 0) next
+
+    pair_trades <- list()
 
     for (i in seq_len(nrow(targets))) {
       target <- targets[i, ]
-      # Floor `need` at TRADE_PREMIUM so that even when target.v_to_partner
-      # is negative (partner sees the player as a liability) we still
-      # require the offer to clear a minimal positive bar. Without this,
-      # the greedy can satisfy `incoming_to_partner >= need` with zero
-      # assets and we'd propose getting the player for nothing.
-      need   <- max(target$v_to_partner + TRADE_PREMIUM, TRADE_PREMIUM)
-
-      offer_rows         <- list()
-      incoming_to_partner <- 0
-      outgoing_to_me      <- 0
-
-      for (j in seq_len(nrow(offer_pool))) {
-        if (incoming_to_partner >= need &&
-            length(offer_rows) >= MIN_OFFER_SIZE) break
-        if (length(offer_rows) >= MAX_OFFER_SIZE) break
-
-        a <- offer_pool[j, ]
-        offer_rows[[length(offer_rows) + 1]] <- a
-        incoming_to_partner <- incoming_to_partner + a$v_to_partner
-        outgoing_to_me      <- outgoing_to_me      + a$v_to_me
-      }
-
-      if (length(offer_rows) < MIN_OFFER_SIZE) next
-      if (incoming_to_partner < need) next
-
-      offer_df            <- bind_rows(offer_rows)
-      my_value_delta      <- target$v_to_me      - outgoing_to_me
-      partner_value_delta <- incoming_to_partner - target$v_to_partner
-
-      if (my_value_delta <= 0) next
-
-      results[[length(results) + 1]] <- tibble(
-        my_team               = me,
-        my_posture            = my_w$posture,
-        partner_team          = partner,
-        partner_posture       = p_w$posture,
-        target_player         = target$asset_id,
-        target_v_to_me        = target$v_to_me,
-        target_v_to_partner   = target$v_to_partner,
-        proposed_offer        = paste(offer_df$asset_label, collapse = "|"),
-        proposed_offer_ids    = paste(offer_df$asset_id,    collapse = "|"),
-        offer_size            = nrow(offer_df),
-        offer_v_to_partner    = incoming_to_partner,
-        offer_v_to_me         = outgoing_to_me,
-        my_value_delta        = my_value_delta,
-        partner_value_delta   = partner_value_delta,
-        notes                 = sprintf("%s receives %s from %s; postures %s/%s",
-                                        me, target$asset_id, partner,
-                                        my_w$posture, p_w$posture)
+      row <- build_trade_row(
+        target, offer_pool, my_w, p_w, me, partner,
+        trade_quality = "strong"
       )
+      if (!is.null(row)) pair_trades[[length(pair_trades) + 1]] <- row
+    }
+
+    # Stretch pass: fill up to TOP_N_PER_PARTNER when strict trades are thin.
+    if (length(pair_trades) < TOP_N_PER_PARTNER && nrow(offer_pool) > 0) {
+      existing_targets <- if (length(pair_trades) > 0) {
+        map_chr(pair_trades, ~ .x$target_player)
+      } else {
+        character(0)
+      }
+      stretch_targets <- targets %>%
+        filter(!asset_id %in% existing_targets)
+
+      for (i in seq_len(nrow(stretch_targets))) {
+        if (length(pair_trades) >= TOP_N_PER_PARTNER) break
+        target <- stretch_targets[i, ]
+        row <- build_trade_row(
+          target, offer_pool, my_w, p_w, me, partner,
+          trade_quality = "stretch"
+        )
+        if (!is.null(row)) pair_trades[[length(pair_trades) + 1]] <- row
+      }
+    }
+
+    # Last resort: top v_to_me targets with any valid offer.
+    if (length(pair_trades) == 0 && nrow(offer_pool) > 0) {
+      fallback_targets <- partner_priced %>%
+        filter(asset_type == "player", v_to_me >= MIN_TARGET_VALUE_TO_ME) %>%
+        arrange(desc(v_to_me)) %>%
+        head(TOP_N_PER_PARTNER)
+
+      for (i in seq_len(nrow(fallback_targets))) {
+        target <- fallback_targets[i, ]
+        row <- build_trade_row(
+          target, offer_pool, my_w, p_w, me, partner,
+          trade_quality = "fallback"
+        )
+        if (!is.null(row)) pair_trades[[length(pair_trades) + 1]] <- row
+      }
+    }
+
+    if (length(pair_trades) > 0) {
+      results <- c(results, pair_trades)
     }
   }
 }
@@ -293,7 +364,10 @@ if (nrow(trade_targets) == 0) {
 } else {
   trade_targets <- trade_targets %>%
     group_by(my_team, partner_team) %>%
-    slice_max(my_value_delta, n = TOP_N_PER_PARTNER, with_ties = FALSE) %>%
+    arrange(desc(trade_quality == "strong"),
+            desc(trade_quality == "stretch"),
+            desc(my_value_delta)) %>%
+    slice_head(n = TOP_N_PER_PARTNER) %>%
     ungroup() %>%
     arrange(my_team, partner_team, desc(my_value_delta))
 }

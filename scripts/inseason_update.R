@@ -171,6 +171,33 @@ tryCatch({
   message(sprintf("ROS projections: %d hitters, %d pitchers (NL only)",
                   nrow(ros_hitters), nrow(ros_pitchers)))
 
+  # Pull FanGraphs auction-calculator dollars in ROS mode so downstream
+  # trade/dashboard views can use a market-style ROS value signal instead of
+  # only the internal standings-value model.
+  message("\n=== Step 3b: Downloading FanGraphs ROS auction dollars ===")
+  old_auction_proj <- Sys.getenv("FANGRAPHS_AUCTION_PROJ", unset = "")
+  old_auction_out  <- Sys.getenv("FANGRAPHS_AUCTION_OUTFILE", unset = "")
+  tryCatch({
+    Sys.setenv(FANGRAPHS_AUCTION_PROJ = "rfangraphsdc")
+    Sys.unsetenv("FANGRAPHS_AUCTION_OUTFILE")
+    source("scripts/download_fangraphs_auction_values.R")
+  }, error = function(e) {
+    w <- sprintf("ROS auction-dollar refresh failed: %s", e$message)
+    message("WARNING: ", w)
+    pipeline_warnings <<- c(pipeline_warnings, w)
+  }, finally = {
+    if (nzchar(old_auction_proj)) {
+      Sys.setenv(FANGRAPHS_AUCTION_PROJ = old_auction_proj)
+    } else {
+      Sys.unsetenv("FANGRAPHS_AUCTION_PROJ")
+    }
+    if (nzchar(old_auction_out)) {
+      Sys.setenv(FANGRAPHS_AUCTION_OUTFILE = old_auction_out)
+    } else {
+      Sys.unsetenv("FANGRAPHS_AUCTION_OUTFILE")
+    }
+  })
+
   # Normalize names for matching
   ros_hitters <- ros_hitters %>%
     mutate(name_normalized = normalize_name(Name))
@@ -673,6 +700,14 @@ tryCatch({
   run_trade_artifact("trade_recommendations",
                      "scripts/trade_recommendations.R")
 
+  n_trade_targets <- 0L
+  trade_targets_path <- "data/processed/trade_targets.csv"
+  if (file.exists(trade_targets_path)) {
+    n_trade_targets <- nrow(
+      read_csv(trade_targets_path, show_col_types = FALSE)
+    )
+  }
+
   # Status
   write_status("success",
                warnings = if (length(pipeline_warnings) > 0)
@@ -683,7 +718,8 @@ tryCatch({
                  sp_benchmark_ip  = pt_benchmarks$sp_benchmark,
                  rp_benchmark_ip  = pt_benchmarks$rp_benchmark,
                  n_hitter_pairings  = nrow(hitter_pairs),
-                 n_pitcher_pairings = nrow(pitcher_pairs)
+                 n_pitcher_pairings = nrow(pitcher_pairs),
+                 n_trade_targets    = n_trade_targets
                ))
 
   # --- Summary ---

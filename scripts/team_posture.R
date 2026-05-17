@@ -96,9 +96,16 @@ repo_root <- if (file.exists("billiken.Rproj")) {
 
 resolve_path <- function(p) file.path(repo_root, p)
 
-standings_path <- resolve_path("data/processed/inseason_projected_standings.csv")
+standings_path <- resolve_path(
+  "data/processed/inseason_projected_standings_prorated.csv"
+)
 if (!file.exists(standings_path)) {
-  stop(sprintf("Missing %s; run scripts/inseason_update.R first.", standings_path),
+  standings_path <- resolve_path(
+    "data/processed/inseason_projected_standings.csv"
+  )
+}
+if (!file.exists(standings_path)) {
+  stop(sprintf("Missing standings CSV; run scripts/inseason_update.R first."),
        call. = FALSE)
 }
 standings <- read_csv(standings_path, show_col_types = FALSE)

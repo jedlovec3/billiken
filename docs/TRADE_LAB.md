@@ -173,7 +173,7 @@ For each pair `(myTeam, otherTeam)`:
    `my_value_delta`.
 
 Knobs (top of `trade_recommendations.R`): `TRADE_PREMIUM=1.0`,
-`MAX_OFFER_SIZE=4`, `MIN_TARGET_VALUE_TO_ME=3.0`,
+`MAX_OFFER_SIZE=4`, `MIN_TARGET_VALUE_TO_ME=1.5`, `MIN_TARGET_ARB_REBUILD=-2.0`,
 `MIN_ASSET_V_TO_PARTNER=0.5`, `MIN_OFFER_SIZE=1`.
 
 **v1.1 update:** `MIN_OFFER_SIZE=1` and a floored `need = max(target.v_to_partner + TRADE_PREMIUM, TRADE_PREMIUM)` guard against "free target" trades that
@@ -225,8 +225,9 @@ every daily run via Step 10 of `scripts/inseason_update.R`.
 | `GET` | `/team_keeper_pressure`     | All 10 keeper-pressure rows |
 | `GET` | `/draft_pick_values`        | Full next-season pick valuation table |
 | `GET` | `/draft_pick_values?team=X` | Same, filtered to one team |
-| `GET` | `/trade_targets/:my_team`   | Ranked trade suggestions where `:my_team` initiates |
+| `GET` | `/trade_targets/:my_team`   | Ranked trade suggestions where `:my_team` initiates (200 + empty `trades` when none) |
 | `GET` | `/trade_targets/:my_team?partner=X` | Same, filtered to one partner team |
+| `POST` | `/evaluate_trade` | Body: `{ my_team, partner_team, my_asset_ids[], partner_asset_ids[] }` — posture-weighted nets for custom offers |
 
 Empty CSV cells deserialize to JSON `null` (not `0`) — the in-server
 `csvToJson` was hardened so the Lovable frontend can safely
