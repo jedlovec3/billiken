@@ -55,6 +55,8 @@ suppressPackageStartupMessages({
   library(tidyverse)
 })
 
+source("scripts/prospect_value_utils.R")
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -138,6 +140,11 @@ team_assets  <- read_csv(assets_path,  show_col_types = FALSE)
 team_posture <- read_csv(posture_path, show_col_types = FALSE)
 draft_picks  <- read_csv(picks_path,   show_col_types = FALSE)
 
+for (col in c("prospect_value", "consensus_rank", "prospect_eta",
+              "prospect_value_source", "future_projection_source")) {
+  if (!col %in% names(team_assets)) team_assets[[col]] <- NA
+}
+
 # ---------------------------------------------------------------------------
 # Per-team weights
 # ---------------------------------------------------------------------------
@@ -162,7 +169,8 @@ player_assets <- team_assets %>%
   filter(!is.na(billikenTeam)) %>%
   transmute(
     billikenTeam,
-    asset_type   = "player",
+    asset_type   = if_else(coalesce(as.numeric(prospect_value), 0) > 0,
+                           "prospect", "player"),
     asset_id     = Name,
     asset_label  = sprintf("%s (%s, %s, $%g, %s)",
                            Name,
@@ -172,6 +180,12 @@ player_assets <- team_assets %>%
                            paste0(coalesce(years_remaining, 0L), "y")),
     win_now_value = coalesce(win_now_value, 0),
     future_value  = coalesce(future_value,  0),
+    prospect_value = coalesce(as.numeric(prospect_value), 0),
+    pick_value = 0,
+    consensus_rank = suppressWarnings(as.numeric(consensus_rank)),
+    prospect_eta = suppressWarnings(as.integer(prospect_eta)),
+    prospect_value_source = as.character(prospect_value_source),
+    future_projection_source = as.character(future_projection_source),
     is_expiring   = coalesce(is_expiring_after_2026, FALSE)
   )
 
@@ -184,6 +198,12 @@ pick_assets <- draft_picks %>%
     asset_label  = sprintf("%d R%d pick", season, round),
     win_now_value = 0,                            # picks pay off in NEXT_YEAR
     future_value  = expected_dollar_value,
+    prospect_value = 0,
+    pick_value = expected_dollar_value,
+    consensus_rank = NA_real_,
+    prospect_eta = NA_integer_,
+    prospect_value_source = NA_character_,
+    future_projection_source = as.character(curve_source),
     is_expiring   = FALSE
   )
 
@@ -200,25 +220,13 @@ attach_team_values <- function(assets_df, my_w, p_w) {
 
 # Partner players to consider as acquisition targets (posture-aware).
 select_targets <- function(partner_priced, my_posture) {
-  players <- partner_priced %>%
-    filter(asset_type == "player") %>%
-    mutate(get_arb = v_to_me - v_to_partner)
-
-  if (my_posture == "rebuild") {
-    # Rebuilders want future assets: young keepers, extended deals, picks.
-    players %>%
-      filter(
-        future_value >= MIN_TARGET_VALUE_TO_ME,
-        get_arb >= MIN_TARGET_ARB_REBUILD
-      ) %>%
-      arrange(desc(future_value), desc(v_to_me)) %>%
-      head(TOP_N_CANDIDATE_TARGETS)
-  } else {
-    players %>%
-      filter(get_arb > 0, v_to_me >= MIN_TARGET_VALUE_TO_ME) %>%
-      arrange(desc(get_arb)) %>%
-      head(TOP_N_CANDIDATE_TARGETS)
-  }
+  select_trade_targets_for_posture(
+    partner_priced,
+    my_posture,
+    min_target_value = MIN_TARGET_VALUE_TO_ME,
+    min_rebuild_arb = MIN_TARGET_ARB_REBUILD,
+    top_n = TOP_N_CANDIDATE_TARGETS
+  )
 }
 
 # Greedy offer for one target; returns a one-row tibble or NULL.
@@ -276,8 +284,12 @@ build_trade_row <- function(target, offer_pool, my_w, p_w, me, partner,
     partner_team          = partner,
     partner_posture       = p_w$posture,
     target_player         = target$asset_id,
+    target_asset_type     = target$asset_type,
+    target_asset_label    = target$asset_label,
     target_v_to_me        = target$v_to_me,
     target_v_to_partner   = target$v_to_partner,
+    target_prospect_value = coalesce(target$prospect_value, 0),
+    target_pick_value     = coalesce(target$pick_value, 0),
     proposed_offer        = paste(offer_df$asset_label, collapse = "|"),
     proposed_offer_ids    = paste(offer_df$asset_id,    collapse = "|"),
     offer_size            = nrow(offer_df),

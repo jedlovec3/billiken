@@ -889,6 +889,23 @@ app.get("/draft_pick_values", async (c) => {
   }
 });
 
+// GET /prospect_values — consensus prospect rankings and future values.
+// Backed by data/processed/prospect_values.csv.
+app.get("/prospect_values", async (c) => {
+  try {
+    const rows = await readProcessedCsv("prospect_values.csv");
+    return c.json({ prospect_values: rows, count: rows.length });
+  } catch (error) {
+    return c.json(
+      {
+        error:
+          "prospect_values.csv not available. Run scripts/build_prospect_values.R or wait for the next daily refresh.",
+      },
+      { status: 404 }
+    );
+  }
+});
+
 // Posture weights (mirror scripts/trade_recommendations.R POSTURE_WEIGHTS).
 const POSTURE_WEIGHTS = {
   contender: { w_win_now: 1.0, w_future: 0.3 },
@@ -1047,6 +1064,9 @@ app.post("/evaluate_trade", async (c) => {
         Name: `pick_${p.season}_R${String(p.round).padStart(2, "0")}`,
         win_now_value: 0,
         future_value: asFiniteNumber(p.expected_dollar_value) ?? 0,
+        pick_value: asFiniteNumber(p.expected_dollar_value) ?? 0,
+        prospect_value: 0,
+        future_projection_source: p.curve_source ?? null,
         asset_type: "pick",
       }));
 
@@ -1054,7 +1074,8 @@ app.post("/evaluate_trade", async (c) => {
       ...assets.map((a) => ({
         ...a,
         asset_id: a.Name,
-        asset_type: "player",
+        asset_type:
+          (asFiniteNumber(a.prospect_value) ?? 0) > 0 ? "prospect" : "player",
       })),
       ...pickAssets,
     ];
@@ -1161,4 +1182,3 @@ Bun.serve({
 });
 
 console.log(`Billiken API server running on port ${PORT}`);
-

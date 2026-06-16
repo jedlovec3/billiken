@@ -181,6 +181,7 @@ tryCatch({
     Sys.setenv(FANGRAPHS_AUCTION_PROJ = "rfangraphsdc")
     Sys.unsetenv("FANGRAPHS_AUCTION_OUTFILE")
     source("scripts/download_fangraphs_auction_values.R")
+    download_fangraphs_auction_values(projections_year = as.character(current_year))
   }, error = function(e) {
     w <- sprintf("ROS auction-dollar refresh failed: %s", e$message)
     message("WARNING: ", w)
@@ -681,10 +682,14 @@ tryCatch({
   # consumers already depend on.
   message("\n=== Step 10: Building trade-analysis artifacts ===")
 
-  run_trade_artifact <- function(label, script_path) {
+  run_trade_artifact <- function(label, script_path, runner = NULL) {
     tryCatch({
       message(sprintf("Running %s...", script_path))
-      source(script_path, local = new.env())
+      artifact_env <- new.env(parent = globalenv())
+      source(script_path, local = artifact_env)
+      if (!is.null(runner)) {
+        artifact_env[[runner]]()
+      }
     }, error = function(e) {
       w <- sprintf("%s failed: %s", label, e$message)
       message("WARNING: ", w)
@@ -692,6 +697,17 @@ tryCatch({
     })
   }
 
+  # Future/prospect artifacts are additive. They may warn if a public source
+  # changes shape or FanGraphs auth expires, but standings/free-agent outputs
+  # should remain available.
+  run_trade_artifact("download_future_projections",
+                     "scripts/download_future_projections.R",
+                     "download_future_projections")
+  run_trade_artifact("download_prospect_rankings",
+                     "scripts/download_prospect_rankings.R",
+                     "download_prospect_rankings")
+  run_trade_artifact("build_prospect_values",
+                     "scripts/build_prospect_values.R")
   run_trade_artifact("build_team_assets", "scripts/build_team_assets.R")
   run_trade_artifact("team_posture",      "scripts/team_posture.R")
   # value_draft_picks depends on team_posture.csv produced by team_posture.R

@@ -15,8 +15,8 @@ Build a Lovable tab that helps me identify realistic trade targets across the
    given current standings and projected finish.
 2. Surface the players on each roster I'd care about, annotated with contract
    years, salary, and surplus value.
-3. Translate draft picks (and eventually prospects) onto the same value scale
-   as rostered players.
+3. Translate draft picks and prospects onto the same value scale as rostered
+   players.
 4. Recommend offers that improve my team relative to my own posture while
    plausibly satisfying the partner's posture.
 
@@ -148,17 +148,36 @@ to 2013), compute per-pick SGPAR/dollar surplus realized, and smooth (LOESS
 or monotone spline). Output schema is intentionally stable so the matchmaker
 doesn't care which curve produced it.
 
-### Phase 5 — Trade matchmaker — ✅ v1.1 shipped (FG ROS values)
+### Phase 4b — Prospect valuation — ✅ v1 shipped
+**Scripts:** `scripts/download_prospect_rankings.R`,
+`scripts/download_future_projections.R`, `scripts/build_prospect_values.R`
+**Output:** `data/processed/prospect_values.csv`
+**API:** `GET /prospect_values`
+
+Prospects are valued from a consensus of MLB Pipeline Top 100 and FanGraphs
+The Board data when available. MLB is fetched from
+`https://www.mlb.com/milb/prospects`; FanGraphs can be supplied through
+`FANGRAPHS_PROSPECTS_CSV_URL` for authenticated/member exports. ETA controls
+timing: 2026 arrivals receive full value, 2027/2028 arrivals are discounted,
+and long-range or missing ETAs receive larger discounts.
+
+FanGraphs ZiPS future projections are downloaded for 2027/2028 via
+`zipsp1`/`zipsp2` and used as a source-confidence signal in v1. Output columns
+include `consensus_rank`, `eta`, `prospect_value`,
+`prospect_value_2027`, `prospect_value_2028`, `prospect_value_2029`,
+`prospect_value_source`, and `future_projection_source`.
+
+### Phase 5 — Trade matchmaker — ✅ v1.2 shipped (future assets)
 **Script:** `scripts/trade_recommendations.R`
 **Output:** `data/processed/trade_targets.csv`
 **API:** `GET /trade_targets/:my_team?partner=<team>&horizon=win_now|future|balanced`
 
 For each pair `(myTeam, otherTeam)`:
 
-1. Score each of `otherTeam`'s players by my-side fit using posture weights
+1. Score each of `otherTeam`'s assets by my-side fit using posture weights
    (contender 1.0 win-now / 0.3 future, bubble 0.8/0.5, mid 0.6/0.7,
-   rebuild 0.2/1.0). Targets are partner *players* only in v1 — picks come
-   only from my side as offer currency.
+   rebuild 0.2/1.0). Rebuild teams can now target partner players,
+   prospects, and next-season picks.
 2. For each top-`TOP_N_CANDIDATE_TARGETS=20` candidate, propose minimal
    greedy offers from my tradeable assets (rostered players + next-season
    picks) such that `partner.posture_weighted_value(incoming) ≥ outgoing +
@@ -184,23 +203,23 @@ without the guard the greedy would propose acquiring them for zero assets.
 Two-team trades only in v1. Three-team is a future search-routine change;
 the data model is already 3-team-ready.
 
-### Phase 6 — Lovable Trade Lab tab — ⏳ next up
-**Backend endpoints:** all current `/team_*` and `/draft_pick_values` plus
-the future `/trade_targets/...`.
+### Phase 6 — Lovable Trade Lab tab — ✅ live, polish ongoing
+**Backend endpoints:** all current `/team_*`, `/draft_pick_values`,
+`/prospect_values`, `/trade_targets/...`, and `/evaluate_trade`.
 
-Planned layout:
+Current layout:
 
 1. Header: my team's posture card.
 2. League posture grid: 10 cards, color-coded, clickable to filter.
-3. Partner roster panel: `team_assets` table sorted by `surplus`, expandable
-   to show year-by-year value.
-4. My offer builder: drag/select my assets, show running value deltas.
+3. Partner and my-roster tables with contract, win-now, future, and total
+   value columns.
+4. Builder with selectable players and next-season picks on both sides, plus
+   running posture-weighted deltas.
 5. Suggested trades panel: top N rows from `trade_targets.csv` for the
    selected partner, one-click "load into builder".
 
-Until the Trade Lab tab ships, the data is still useful — the existing
-in-season dashboard can surface posture and contract chips as a stepping
-stone.
+This iteration adds asset metadata for Lovable to show prospect/pick labels,
+ETA/rank/source chips, and future-horizon sorting for rebuild mode.
 
 ## Data files (Trade Lab)
 | File | Producer | Shape |
@@ -211,10 +230,12 @@ stone.
 | `data/processed/draft_pick_values.csv`   | `value_draft_picks.R` | one row per `(team, round)` for next season; expected pick + \$ value |
 | `data/processed/trade_targets.csv`       | `trade_recommendations.R` | one row per suggested trade; my team, partner, target, offer, deltas |
 | `data/processed/player_birthdates.csv`   | `fetch_player_birthdates.R` | cached MLB Stats API birthdate lookup keyed by name + team |
+| `data/processed/prospect_values.csv`     | `build_prospect_values.R` | consensus prospect ranks, ETA, yearly prospect value stream |
 
-All five downstream trade artifacts (`team_assets`, `team_posture`,
-`team_keeper_pressure`, `draft_pick_values`, `trade_targets`) are rebuilt
-every daily run via Step 10 of `scripts/inseason_update.R`.
+All downstream trade artifacts (`prospect_values`, `team_assets`,
+`team_posture`, `team_keeper_pressure`, `draft_pick_values`,
+`trade_targets`) are rebuilt every daily run via Step 10 of
+`scripts/inseason_update.R`.
 
 ## API surface (Trade Lab)
 | Method | Path | Returns |
@@ -225,6 +246,7 @@ every daily run via Step 10 of `scripts/inseason_update.R`.
 | `GET` | `/team_keeper_pressure`     | All 10 keeper-pressure rows |
 | `GET` | `/draft_pick_values`        | Full next-season pick valuation table |
 | `GET` | `/draft_pick_values?team=X` | Same, filtered to one team |
+| `GET` | `/prospect_values`          | Consensus prospect values used by Trade Lab |
 | `GET` | `/trade_targets/:my_team`   | Ranked trade suggestions where `:my_team` initiates (200 + empty `trades` when none) |
 | `GET` | `/trade_targets/:my_team?partner=X` | Same, filtered to one partner team |
 | `POST` | `/evaluate_trade` | Body: `{ my_team, partner_team, my_asset_ids[], partner_asset_ids[] }` — posture-weighted nets for custom offers |
@@ -243,13 +265,14 @@ trade rows.
 |------|---------|-------|--------------|
 | Discount factor γ          | `0.7`              | `build_team_assets.R` | Higher = future-friendly; lower = win-now-friendly |
 | Aging breakpoints          | 30 / 33            | `build_team_assets.R` | 5%/yr decay 31–33, 10%/yr 34+ |
-| Drop-penalty trigger       | `years_remaining ≥ 2` | `build_team_assets.R` | Can lower to ≥1 if needed |
+| Drop-penalty trigger       | extended contract ending after current year | `prospect_value_utils.R` | Applies $5 per remaining extension year |
 | Posture thresholds         | gap-to-3rd cutoffs | `team_posture.R`      | Splits `contender`/`bubble`/`mid`/`rebuild` |
 | Placeholder pick curve     | `0.5 + 39.5*e^{-0.04(p-1)}` | `value_draft_picks.R` | Phase 4 v2 will replace this with historical fit |
+| ETA prospect discount      | `1.0 / 0.75 / 0.55 / 0.35` | `prospect_value_utils.R` | Values 2026 / 2027 / 2028 / 2029+ ETA timing |
 | Lottery sims               | `20000`            | `value_draft_picks.R` | Determines smoothness of expected R1 pick |
 | Trade premium              | `1.0`              | `trade_recommendations.R` | How much above v_to_partner the offer must clear to be "acceptable" |
 | Max offer size             | `4`                | `trade_recommendations.R` | Greedy stops adding assets once we hit this many |
-| Min target v_to_me         | `3.0`              | `trade_recommendations.R` | Don't waste rows on barely-worth-it targets |
+| Min target v_to_me         | `1.5`              | `trade_recommendations.R` | Don't waste rows on barely-worth-it targets |
 | Min asset v_to_partner     | `0.5`              | `trade_recommendations.R` | Drops underwater contracts from the offer pool (dump-asset guard) |
 | Min offer size             | `1`                | `trade_recommendations.R` | Every accepted trade must include at least one outgoing asset (free-target guard) |
 | Value source preference    | FG ROS > FG full > SGP | `build_team_assets.R` | Coalesce order for `win_now_value` and `dashboard_value_2026` |
@@ -266,8 +289,8 @@ trade rows.
    tabs (2013–present), match to historical FG/SGPAR, smooth, replace the
    placeholder curve. Output schema stays the same.
 4. **Trade matchmaker iteration.** Possible v2 ideas once Lovable is live:
-   server-side horizon re-ranking (currently `?horizon=` is informational),
-   3-team chains, ILP offer selection, prospect inclusion.
+   3-team chains, ILP offer selection, standings-impact simulation, and a
+   historical pick-value curve.
 5. **`/inseason_pt_benchmarks` hitter regression.** All hitter rows return
    `null` with `pool_size=0`. Root-cause in `compute_pt_benchmarks()` in
    `scripts/inseason_proration.R`. Non-blocking; pitcher benchmarks are fine.
@@ -277,6 +300,6 @@ trade rows.
   `BILLIKEN_PROJECTIONS_YEAR` (defaults to current year).
 * `data/processed/` is `.gitignore`d — those CSVs are regenerated by the
   pipeline, not stored in git. The R scripts that produce them are tracked.
-* Commits include a `Co-Authored-By: Oz <oz-agent@warp.dev>` trailer.
+* Generated CSVs stay out of git; commit scripts, docs, and tests only.
 * When you change a contract/salary rule or knob default, update both this
   doc and `docs/LEAGUE_RULES.md`.

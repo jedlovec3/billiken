@@ -36,6 +36,8 @@ suppressPackageStartupMessages({
   library(fuzzyjoin)
 })
 
+source("scripts/prospect_value_utils.R")
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -163,6 +165,13 @@ auction_ros_path <- resolve_path(file.path(
 ))
 auction_ros_raw <- if (file.exists(auction_ros_path)) {
   read_csv(auction_ros_path, show_col_types = FALSE)
+} else {
+  tibble()
+}
+
+prospect_values_path <- resolve_path("data/processed/prospect_values.csv")
+prospect_values_raw <- if (file.exists(prospect_values_path)) {
+  read_csv(prospect_values_path, show_col_types = FALSE)
 } else {
   tibble()
 }
@@ -454,6 +463,49 @@ assets <- assets %>%
   join_by_normalized_name(pos_long, cols = c("positions"))
 
 # ---------------------------------------------------------------------------
+# Prospect value overlay
+# ---------------------------------------------------------------------------
+
+if (nrow(prospect_values_raw) > 0) {
+  prospect_lookup <- prospect_values_raw %>%
+    transmute(
+      Name = str_squish(as.character(Name)),
+      prospect_value = suppressWarnings(as.numeric(prospect_value)),
+      prospect_value_2027 = suppressWarnings(as.numeric(prospect_value_2027)),
+      prospect_value_2028 = suppressWarnings(as.numeric(prospect_value_2028)),
+      prospect_value_2029 = suppressWarnings(as.numeric(prospect_value_2029)),
+      consensus_rank = suppressWarnings(as.numeric(consensus_rank)),
+      prospect_eta = suppressWarnings(as.integer(eta)),
+      prospect_value_source = as.character(prospect_value_source),
+      future_projection_source = as.character(future_projection_source),
+      key_keep = normalize_name(Name),
+      key_strip = normalize_name(strip_suffixes(Name))
+    )
+
+  assets <- assets %>%
+    join_by_normalized_name(
+      prospect_lookup,
+      cols = c(
+        "prospect_value", "prospect_value_2027", "prospect_value_2028",
+        "prospect_value_2029", "consensus_rank", "prospect_eta",
+        "prospect_value_source", "future_projection_source"
+      )
+    )
+} else {
+  assets <- assets %>%
+    mutate(
+      prospect_value = NA_real_,
+      prospect_value_2027 = NA_real_,
+      prospect_value_2028 = NA_real_,
+      prospect_value_2029 = NA_real_,
+      consensus_rank = NA_real_,
+      prospect_eta = NA_integer_,
+      prospect_value_source = NA_character_,
+      future_projection_source = NA_character_
+    )
+}
+
+# ---------------------------------------------------------------------------
 # Phase 2 — multi-year value
 #
 #   * Birthdate → age_2026 via the lazy MLB Stats API cache. We refresh
@@ -595,10 +647,20 @@ assets <- multi_year %>%
     # (deep bench / minors / Triple-A callups), fall back to the legacy SGP
     # surplus so the column is still populated.
     win_now_value = coalesce(fg_ros_auction_dollars, win_now_surplus_sgp, 0),
-    future_value  = coalesce(surplus_2027, 0) * GAMMA   +
-                    coalesce(surplus_2028, 0) * GAMMA^2 +
-                    coalesce(surplus_2029, 0) * GAMMA^3 +
-                    coalesce(surplus_2030, 0) * GAMMA^4,
+    drop_penalty_liability = drop_penalty_liability(
+      contract_status,
+      contract_end,
+      current_year = CURRENT_YEAR
+    ),
+    future_value  = calculate_future_asset_value(
+      surplus_2027 = surplus_2027,
+      surplus_2028 = surplus_2028,
+      surplus_2029 = surplus_2029,
+      surplus_2030 = surplus_2030,
+      prospect_value = prospect_value,
+      drop_penalty_liability = drop_penalty_liability,
+      gamma = GAMMA
+    ),
     total_value   = win_now_value + future_value
   )
 
@@ -635,6 +697,15 @@ team_assets <- assets %>%
     dashboard_value_2026,
     dashboard_value_source,
     surplus_2026,
+    prospect_value,
+    prospect_value_2027,
+    prospect_value_2028,
+    prospect_value_2029,
+    consensus_rank,
+    prospect_eta,
+    prospect_value_source,
+    future_projection_source,
+    drop_penalty_liability,
     sgpar_2027, sgpar_2028, sgpar_2029, sgpar_2030,
     dollar_value_2027, dollar_value_2028, dollar_value_2029, dollar_value_2030,
     salary_2027, salary_2028, salary_2029, salary_2030,

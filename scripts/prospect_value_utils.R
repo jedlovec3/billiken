@@ -1,0 +1,288 @@
+# Shared helpers for Trade Lab future-asset valuation.
+
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(stringi)
+})
+
+normalize_trade_name <- function(x) {
+  x %>%
+    as.character() %>%
+    stringi::stri_trans_general("Latin-ASCII") %>%
+    str_replace_all("\u00A0", " ") %>%
+    str_replace_all("[.]", "") %>%
+    str_replace_all(",|\\s+(jr|sr|ii|iii|iv|v)\\.?$", "") %>%
+    str_squish() %>%
+    str_to_lower()
+}
+
+col_or <- function(df, candidates, default) {
+  for (candidate in candidates) {
+    if (candidate %in% names(df)) return(df[[candidate]])
+  }
+  rep(default, nrow(df))
+}
+
+eta_multiplier <- function(eta, current_year = as.integer(format(Sys.Date(), "%Y"))) {
+  eta_num <- suppressWarnings(as.integer(eta))
+  case_when(
+    is.na(eta_num)                 ~ 0.50,
+    eta_num <= current_year        ~ 1.00,
+    eta_num == current_year + 1L   ~ 0.75,
+    eta_num == current_year + 2L   ~ 0.55,
+    TRUE                           ~ 0.35
+  )
+}
+
+prospect_rank_value <- function(rank, top_value = 35, floor_value = 2,
+                                decay = 0.035) {
+  rank_num <- suppressWarnings(as.numeric(rank))
+  ifelse(
+    is.na(rank_num) | rank_num <= 0,
+    NA_real_,
+    floor_value + (top_value - floor_value) * exp(-decay * (rank_num - 1))
+  )
+}
+
+fv_to_rank <- function(fv) {
+  fv_num <- suppressWarnings(as.numeric(fv))
+  case_when(
+    is.na(fv_num)  ~ NA_real_,
+    fv_num >= 70   ~ 1,
+    fv_num >= 65   ~ 5,
+    fv_num >= 60   ~ 12,
+    fv_num >= 55   ~ 25,
+    fv_num >= 50   ~ 55,
+    fv_num >= 45   ~ 95,
+    fv_num >= 40   ~ 150,
+    TRUE           ~ NA_real_
+  )
+}
+
+risk_multiplier <- function(risk) {
+  r <- str_to_lower(str_squish(as.character(risk)))
+  case_when(
+    is.na(r) | r == ""                 ~ 0.90,
+    str_detect(r, "low")               ~ 1.00,
+    str_detect(r, "med|mod")           ~ 0.90,
+    str_detect(r, "extreme|very high") ~ 0.60,
+    str_detect(r, "high")              ~ 0.75,
+    TRUE                               ~ 0.85
+  )
+}
+
+allocate_prospect_value_by_eta <- function(value, eta,
+                                           current_year = as.integer(format(Sys.Date(), "%Y"))) {
+  eta_num <- suppressWarnings(as.integer(eta))
+  value <- coalesce(as.numeric(value), 0)
+  if (is.na(eta_num) || eta_num <= current_year + 1L) {
+    return(c(value * 0.60, value * 0.25, value * 0.15))
+  }
+  if (eta_num == current_year + 2L) {
+    return(c(0, value * 0.60, value * 0.40))
+  }
+  c(0, 0, value)
+}
+
+.standardize_mlb_prospects <- function(mlb_rankings) {
+  if (is.null(mlb_rankings) || nrow(mlb_rankings) == 0) {
+    return(tibble(
+      name_normalized = character(),
+      Name = character(),
+      mlb_rank = numeric(),
+      mlb_org_mlb = character(),
+      position_mlb = character(),
+      level_mlb = character(),
+      eta_mlb = integer(),
+      age_mlb = numeric()
+    ))
+  }
+
+  df <- mlb_rankings
+  names <- col_or(df, c("Name", "Player", "PlayerName"), NA_character_)
+
+  tibble(
+    name_normalized = normalize_trade_name(names),
+    Name = str_squish(as.character(names)),
+    mlb_rank = suppressWarnings(as.numeric(coalesce(
+      col_or(df, c("mlb_rank"), NA_real_),
+      col_or(df, c("source_rank"), NA_real_)
+    ))),
+    mlb_org_mlb = as.character(col_or(df, c("mlb_org"), NA_character_)),
+    position_mlb = as.character(col_or(df, c("position"), NA_character_)),
+    level_mlb = as.character(col_or(df, c("level"), NA_character_)),
+    eta_mlb = suppressWarnings(as.integer(col_or(df, c("eta"), NA_integer_))),
+    age_mlb = suppressWarnings(as.numeric(col_or(df, c("age"), NA_real_)))
+  ) %>%
+    filter(!is.na(name_normalized), name_normalized != "") %>%
+    group_by(name_normalized) %>%
+    slice_min(mlb_rank, n = 1, with_ties = FALSE) %>%
+    ungroup()
+}
+
+.standardize_fg_prospects <- function(fg_rankings) {
+  if (is.null(fg_rankings) || nrow(fg_rankings) == 0) {
+    return(tibble(
+      name_normalized = character(),
+      Name_fg = character(),
+      fg_rank = numeric(),
+      fg_fv = numeric(),
+      fg_risk = character(),
+      mlb_org_fg = character(),
+      position_fg = character(),
+      level_fg = character(),
+      eta_fg = integer(),
+      age_fg = numeric()
+    ))
+  }
+
+  df <- fg_rankings
+  names <- col_or(df, c("Name", "Player", "PlayerName"), NA_character_)
+
+  tibble(
+    name_normalized = normalize_trade_name(names),
+    Name_fg = str_squish(as.character(names)),
+    fg_rank = suppressWarnings(as.numeric(coalesce(
+      col_or(df, c("fg_rank"), NA_real_),
+      col_or(df, c("source_rank"), NA_real_)
+    ))),
+    fg_fv = suppressWarnings(as.numeric(col_or(df, c("fg_fv"), NA_real_))),
+    fg_risk = as.character(col_or(df, c("fg_risk"), NA_character_)),
+    mlb_org_fg = as.character(col_or(df, c("mlb_org"), NA_character_)),
+    position_fg = as.character(col_or(df, c("position"), NA_character_)),
+    level_fg = as.character(col_or(df, c("level"), NA_character_)),
+    eta_fg = suppressWarnings(as.integer(col_or(df, c("eta"), NA_integer_))),
+    age_fg = suppressWarnings(as.numeric(col_or(df, c("age"), NA_real_)))
+  ) %>%
+    filter(!is.na(name_normalized), name_normalized != "") %>%
+    mutate(fg_rank = coalesce(fg_rank, fv_to_rank(fg_fv))) %>%
+    group_by(name_normalized) %>%
+    arrange(is.na(fg_rank), fg_rank) %>%
+    slice(1) %>%
+    ungroup()
+}
+
+build_consensus_prospect_values <- function(mlb_rankings = tibble(),
+                                            fg_rankings = tibble(),
+                                            current_year = as.integer(format(Sys.Date(), "%Y"))) {
+  mlb <- .standardize_mlb_prospects(mlb_rankings)
+  fg <- .standardize_fg_prospects(fg_rankings)
+
+  joined <- full_join(mlb, fg, by = "name_normalized") %>%
+    mutate(
+      Name = coalesce(Name, Name_fg),
+      mlb_org = coalesce(mlb_org_fg, mlb_org_mlb),
+      position = coalesce(position_fg, position_mlb),
+      level = coalesce(level_fg, level_mlb),
+      eta = coalesce(eta_fg, eta_mlb),
+      age = coalesce(age_fg, age_mlb),
+      consensus_rank = case_when(
+        !is.na(fg_rank) & !is.na(mlb_rank) ~ 0.6 * fg_rank + 0.4 * mlb_rank,
+        !is.na(fg_rank)                    ~ fg_rank,
+        !is.na(mlb_rank)                   ~ mlb_rank,
+        TRUE                               ~ NA_real_
+      ),
+      prospect_value_source = case_when(
+        !is.na(fg_rank) & !is.na(mlb_rank) ~ "fangraphs_mlb_consensus",
+        !is.na(fg_rank)                    ~ "fangraphs",
+        !is.na(mlb_rank)                   ~ "mlb_pipeline",
+        TRUE                               ~ "heuristic"
+      ),
+      rank_value = coalesce(prospect_rank_value(consensus_rank), 1.0),
+      prospect_value = rank_value *
+        eta_multiplier(eta, current_year = current_year) *
+        risk_multiplier(fg_risk)
+    )
+
+  if (nrow(joined) == 0) {
+    return(tibble(
+      Name = character(), name_normalized = character(), mlb_org = character(),
+      position = character(), level = character(), eta = integer(),
+      age = numeric(), fg_rank = numeric(), fg_fv = numeric(),
+      fg_risk = character(), mlb_rank = numeric(),
+      consensus_rank = numeric(), future_projection_source = character(),
+      prospect_value_2027 = numeric(), prospect_value_2028 = numeric(),
+      prospect_value_2029 = numeric(), prospect_value = numeric(),
+      prospect_value_source = character()
+    ))
+  }
+
+  yearly <- pmap_dfr(
+    list(joined$prospect_value, joined$eta),
+    function(value, eta) {
+      vals <- allocate_prospect_value_by_eta(value, eta, current_year)
+      tibble(
+        prospect_value_2027 = vals[[1]],
+        prospect_value_2028 = vals[[2]],
+        prospect_value_2029 = vals[[3]]
+      )
+    }
+  )
+
+  bind_cols(joined, yearly) %>%
+    mutate(future_projection_source = NA_character_) %>%
+    select(
+      Name, name_normalized, mlb_org, position, level, eta, age,
+      fg_rank, fg_fv, fg_risk, mlb_rank, consensus_rank,
+      future_projection_source,
+      prospect_value_2027, prospect_value_2028, prospect_value_2029,
+      prospect_value, prospect_value_source
+    ) %>%
+    arrange(is.na(consensus_rank), consensus_rank, desc(prospect_value))
+}
+
+drop_penalty_liability <- function(contract_status, contract_end,
+                                   current_year = as.integer(format(Sys.Date(), "%Y"))) {
+  status <- str_to_lower(as.character(contract_status))
+  end <- suppressWarnings(as.integer(contract_end))
+  ifelse(
+    status == "extended" & !is.na(end) & end > current_year,
+    pmax(0, end - current_year) * 5,
+    0
+  )
+}
+
+calculate_future_asset_value <- function(surplus_2027 = 0, surplus_2028 = 0,
+                                         surplus_2029 = 0, surplus_2030 = 0,
+                                         prospect_value = 0,
+                                         drop_penalty_liability = 0,
+                                         gamma = 0.7) {
+  coalesce(as.numeric(surplus_2027), 0) * gamma +
+    coalesce(as.numeric(surplus_2028), 0) * gamma^2 +
+    coalesce(as.numeric(surplus_2029), 0) * gamma^3 +
+    coalesce(as.numeric(surplus_2030), 0) * gamma^4 +
+    coalesce(as.numeric(prospect_value), 0) -
+    coalesce(as.numeric(drop_penalty_liability), 0)
+}
+
+select_trade_targets_for_posture <- function(priced_assets, my_posture,
+                                             min_target_value = 1.5,
+                                             min_rebuild_arb = -2.0,
+                                             top_n = 20L) {
+  assets <- priced_assets %>%
+    mutate(
+      asset_type = coalesce(as.character(asset_type), "player"),
+      get_arb = v_to_me - v_to_partner,
+      prospect_value = coalesce(as.numeric(prospect_value), 0),
+      pick_value = coalesce(as.numeric(pick_value), 0),
+      future_value = coalesce(as.numeric(future_value), 0)
+    )
+
+  if (identical(my_posture, "rebuild")) {
+    return(
+      assets %>%
+        filter(
+          asset_type %in% c("player", "prospect", "pick"),
+          future_value >= min_target_value,
+          get_arb >= min_rebuild_arb
+        ) %>%
+        arrange(desc(future_value), desc(prospect_value), desc(pick_value), desc(v_to_me)) %>%
+        head(top_n)
+    )
+  }
+
+  assets %>%
+    filter(asset_type == "player", get_arb > 0, v_to_me >= min_target_value) %>%
+    arrange(desc(get_arb)) %>%
+    head(top_n)
+}

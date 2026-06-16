@@ -13,7 +13,8 @@ Daily Cron (Railway) → POST /run_inseason_update
                 ├─ download_ros_projections()    → FanGraphs ROS per-player stats
                 ├─ join rosters + projections    → per-team ROS stats
                 ├─ YTD + ROS = projected totals  → end-of-season projections
-                └─ rank + score                  → projected roto standings
+                ├─ rank + score                  → projected roto standings
+                └─ trade artifacts               → prospects, picks, Trade Lab
                             ↓
               CSV + JSON outputs in data/processed/
                             ↓
@@ -58,9 +59,26 @@ Exports two functions consumed by `inseason_update.R`:
 
 Positional eligibility comes from `data/raw/positions_latest.csv` (produced by `scripts/fetch_espn_positions.R`). If the file is absent the `positions` column is `NA` and the dashboard position filter becomes a no‑op.
 
+### Trade Lab future-asset scripts
+
+These scripts are additive to the standings pipeline and are run from Step 10
+of `scripts/inseason_update.R`.
+
+- `scripts/download_fangraphs_auction_values.R` downloads FanGraphs auction
+  calculator values. In-season runs set `FANGRAPHS_AUCTION_PROJ=rfangraphsdc`
+  so `build_team_assets.R` receives `data/raw/auction_values_ros_{year}.csv`.
+- `scripts/download_future_projections.R` downloads FanGraphs ZiPS future
+  projections for the next two seasons (`zipsp1`/`zipsp2`) when
+  `FANGRAPHS_COOKIE` is valid.
+- `scripts/download_prospect_rankings.R` fetches MLB Pipeline prospects and,
+  if `FANGRAPHS_PROSPECTS_CSV_URL` is set, a FanGraphs The Board export.
+- `scripts/build_prospect_values.R` builds
+  `data/processed/prospect_values.csv` with consensus rank, ETA, source, and
+  yearly future-value stream.
+
 ### `scripts/inseason_update.R`
 
-The core orchestrator. Runs all 9 steps of the projection pipeline:
+The core orchestrator. Runs all projection and Trade Lab refresh steps:
 
 1. **Fetch ESPN standings** — current-year season-to-date team stats via `fetch_espn_standings()`. Sources `fetch_espn_standings.R` into a local environment to prevent its auto-run block from firing (it would otherwise fetch 5 years of historical data).
 2. **Fetch ESPN rosters** — which players are on which fantasy teams.
@@ -84,6 +102,11 @@ The core orchestrator. Runs all 9 steps of the projection pipeline:
 9. **Output free agents + status** — writes:
    - `data/processed/inseason_free_agents.csv` — ranked free‑agent pool with ROS SGP and position eligibility
    - `data/processed/inseason_status.json` — pipeline status (`success`/`error`, `last_updated`, `warnings`, `error_message`, `sgp_source` = `unit_values`\|`fallback`, `n_free_agents`)
+10. **Refresh Trade Lab artifacts** — downloads future projections and
+    prospect rankings, builds `prospect_values.csv`, then rebuilds
+    `team_assets.csv`, `team_posture.csv`, `draft_pick_values.csv`, and
+    `trade_targets.csv`. These steps warn rather than fail the standings
+    update if a future/prospect source is temporarily unavailable.
 
 **Run locally:** `Rscript scripts/inseason_update.R`
 
@@ -102,6 +125,9 @@ All served by `server.js` (Bun/Hono on Railway).
 | `GET` | `/inseason_free_agents` | Returns `{ free_agents: [...], count, status }`. Query params: `type` (`hitter`\|`pitcher`\|`all`, default `all`), `position` (`C`, `1B`, `2B`, `3B`, `SS`, `OF`, `DH`, `SP`, `RP`), `limit` (default 50, 0 = no limit). |
 | `GET` | `/inseason_free_agents/:player` | Single-player lookup by exact name (case-insensitive). |
 | `GET` | `/inseason_status` | Returns the pipeline status JSON (last_updated, status, warnings, errors, sgp_source, n_free_agents). |
+| `GET` | `/prospect_values` | Returns consensus prospect values used by Trade Lab. |
+| `GET` | `/trade_targets/:my_team` | Returns suggested trades for a team. Query params: `partner`, `horizon=win_now\|future\|balanced`. |
+| `POST` | `/evaluate_trade` | Evaluates a custom two-team trade using player names and pick ids like `pick_2027_R01`. |
 
 CORS is enabled for all origins (`Access-Control-Allow-Origin: *`) so the Lovable frontend can call the API.
 
@@ -118,6 +144,8 @@ These must be set in the Railway dashboard under your service's Variables tab:
 | `FANGRAPHS_USER` | FanGraphs login email |
 | `FANGRAPHS_PASS` | FanGraphs login password |
 | `FANGRAPHS_COOKIE` | FanGraphs session cookie |
+| `FANGRAPHS_AUCTION_PROJ` | Optional. Defaults per script; in-season update sets `rfangraphsdc` for ROS auction values. |
+| `FANGRAPHS_PROSPECTS_CSV_URL` | Optional FanGraphs The Board CSV/export URL. If unset, prospects are valued from MLB Pipeline only. |
 | `BILLIKEN_PROJECTIONS_YEAR` | Current season year (e.g. `2026`) |
 | `PORT` | `3000` |
 
@@ -188,6 +216,9 @@ To modify the Lovable app, open it in the Lovable editor and prompt changes in n
 - `GET /inseason_team/{name}` → `{ team, players: [{team_name, player_name, lineup_slot, roster_status, player_type, primary_position?, pitcher_role?, pt_benchmark?, pt_fraction?, displacement_role?, effective_share?, AB?, H?, R?, HR?, RBI?, SB?, PA?, IP?, W?, SV?, SO?, ER?, BB?, HA?, ERA?, WHIP?, sgp_total?}] }` — hitter rows carry counting stats + PA + primary position; pitcher rows carry counting stats + ERA/WHIP + role. `roster_status` is `active`/`bench`/`IL`/`minors`. `displacement_role` labels rows that participate in the prorated view: `stashed_by:<fill_in_player>` for stashed players, `displaces:<stashed_player>` for active fill-ins; `effective_share` is `1.0` for everyone except prorated fill-ins, who get `1 - f`. Use it to badge or fade rows on the team drill-down.
 - `GET /inseason_pt_benchmarks` → `{ rows, hitters: {C, 1B, 2B, 3B, SS, OF, DH}, pitchers: {SP, RP} }` — league-wide playing-time benchmarks (median PA / median IP) used by the prorated view; surface as tooltips so users can see what a "full-time" hitter / SP / RP looks like.
 - `GET /inseason_free_agents?type=hitter|pitcher&position=<pos>&limit=50` → `{ free_agents: [{rank_overall, rank_by_type, player_type, Name, Team, positions, AB?, R?, HR?, …, IP?, W?, …, sgp_total}], count, status }`
+- `GET /prospect_values` → `{ prospect_values: [{Name, consensus_rank, eta, prospect_value, prospect_value_2027, prospect_value_2028, prospect_value_2029, prospect_value_source, future_projection_source}], count }`
+- `GET /trade_targets/{team}?horizon=future` → `{ my_team, horizon, trades: [{target_asset_type, target_asset_label, target_player, proposed_offer, my_future_delta, my_win_now_delta, partner_win_now_delta, target_prospect_value?, target_pick_value?}], count }`
+- `POST /evaluate_trade` with `{ my_team, partner_team, my_asset_ids, partner_asset_ids }` → weighted win-now/future nets for both teams. Pick ids use `pick_YYYY_RNN`.
 
 ## Local development
 
@@ -203,6 +234,9 @@ Rscript scripts/inseason_update.R
 ```sh
 Rscript scripts/fetch_espn_rosters.R
 Rscript scripts/download_ros_projections.R
+Rscript scripts/download_future_projections.R
+Rscript scripts/download_prospect_rankings.R
+Rscript scripts/build_prospect_values.R
 ```
 
 ### Test the API locally
