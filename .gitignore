@@ -4,6 +4,7 @@
 .Ruserdata
 .Renviron
 r-packages/
+.worktrees/
 
 # OS artifacts
 .DS_Store
