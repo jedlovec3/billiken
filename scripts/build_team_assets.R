@@ -518,7 +518,8 @@ if (nrow(prospect_values_raw) > 0) {
 #     player re-enters the auction (surplus_y = 0).
 #   * Discount factor gamma = 0.7 (configurable below).
 #   * Aggregates: win_now_value (= surplus_2026), future_value (sum of
-#     surplus_y * gamma^(y - 2026) for y > 2026 through contract_end),
+#     discounted future contract-year nets, choosing the better projection or
+#     prospect value in each year, minus drop penalty),
 #     and total_value (= win_now + future).
 # ---------------------------------------------------------------------------
 
@@ -652,12 +653,58 @@ assets <- multi_year %>%
       contract_end,
       current_year = CURRENT_YEAR
     ),
+    future_selected_value_2027 = future_year_selected_value(
+      dollar_value_2027, prospect_value_2027, salary_2027
+    ),
+    future_selected_value_2028 = future_year_selected_value(
+      dollar_value_2028, prospect_value_2028, salary_2028
+    ),
+    future_selected_value_2029 = future_year_selected_value(
+      dollar_value_2029, prospect_value_2029, salary_2029
+    ),
+    future_selected_value_2030 = future_year_selected_value(
+      dollar_value_2030, 0, salary_2030
+    ),
+    future_selected_source_2027 = future_year_value_source(
+      dollar_value_2027, prospect_value_2027, salary_2027
+    ),
+    future_selected_source_2028 = future_year_value_source(
+      dollar_value_2028, prospect_value_2028, salary_2028
+    ),
+    future_selected_source_2029 = future_year_value_source(
+      dollar_value_2029, prospect_value_2029, salary_2029
+    ),
+    future_selected_source_2030 = future_year_value_source(
+      dollar_value_2030, 0, salary_2030
+    ),
+    future_net_2027 = future_year_net_value(
+      dollar_value_2027, prospect_value_2027, salary_2027
+    ),
+    future_net_2028 = future_year_net_value(
+      dollar_value_2028, prospect_value_2028, salary_2028
+    ),
+    future_net_2029 = future_year_net_value(
+      dollar_value_2029, prospect_value_2029, salary_2029
+    ),
+    future_net_2030 = future_year_net_value(
+      dollar_value_2030, 0, salary_2030
+    ),
+    future_discounted_2027 = future_net_2027 * GAMMA,
+    future_discounted_2028 = future_net_2028 * GAMMA^2,
+    future_discounted_2029 = future_net_2029 * GAMMA^3,
+    future_discounted_2030 = future_net_2030 * GAMMA^4,
     future_value  = calculate_future_asset_value(
-      surplus_2027 = surplus_2027,
-      surplus_2028 = surplus_2028,
-      surplus_2029 = surplus_2029,
-      surplus_2030 = surplus_2030,
-      prospect_value = prospect_value,
+      projection_value_2027 = dollar_value_2027,
+      projection_value_2028 = dollar_value_2028,
+      projection_value_2029 = dollar_value_2029,
+      projection_value_2030 = dollar_value_2030,
+      prospect_value_2027 = prospect_value_2027,
+      prospect_value_2028 = prospect_value_2028,
+      prospect_value_2029 = prospect_value_2029,
+      salary_2027 = salary_2027,
+      salary_2028 = salary_2028,
+      salary_2029 = salary_2029,
+      salary_2030 = salary_2030,
       drop_penalty_liability = drop_penalty_liability,
       gamma = GAMMA
     ),
@@ -710,6 +757,13 @@ team_assets <- assets %>%
     dollar_value_2027, dollar_value_2028, dollar_value_2029, dollar_value_2030,
     salary_2027, salary_2028, salary_2029, salary_2030,
     surplus_2027, surplus_2028, surplus_2029, surplus_2030,
+    future_selected_value_2027, future_selected_value_2028,
+    future_selected_value_2029, future_selected_value_2030,
+    future_selected_source_2027, future_selected_source_2028,
+    future_selected_source_2029, future_selected_source_2030,
+    future_net_2027, future_net_2028, future_net_2029, future_net_2030,
+    future_discounted_2027, future_discounted_2028,
+    future_discounted_2029, future_discounted_2030,
     win_now_surplus_sgp,
     win_now_value,
     future_value,

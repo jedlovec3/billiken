@@ -84,10 +84,10 @@ aggregates:
   RPs implausibly high \$/yr) — closers drop ~3-4x while elite hitters
   and SP stay roughly comparable. The legacy SGP-surplus column is
   retained on every row as `win_now_surplus_sgp` for side-by-side checks.
-* `future_value`  — `γ * surplus_2027 + γ² * surplus_2028 + ...` with default
-  γ = 0.7. Includes the drop-penalty haircut where applicable. Per-year
-  surplus uses the SGP-aged full-season values; switching the future-year
-  baseline to FG full-season auction values is a candidate v2 iteration.
+* `future_value`  — for each contract year, use the higher of the player's
+  projection value and prospect value, subtract that year's salary, then apply
+  the discount factor (`γ = 0.7` by default). Years outside the current
+  contract count as zero. Includes the drop-penalty haircut where applicable.
 * `total_value`   — `win_now_value + future_value`.
 * `dashboard_value_2026` / `dashboard_value_source` — the same value the
   Lovable dashboard renders as "Value". Coalesces ROS → FG full-season →
@@ -176,7 +176,7 @@ For each pair `(myTeam, otherTeam)`:
 
 1. Score each of `otherTeam`'s assets by my-side fit using posture weights
    (contender 1.0 win-now / 0.3 future, bubble 0.8/0.5, mid 0.6/0.7,
-   rebuild 0.2/1.0). Rebuild teams can now target partner players,
+   rebuild 0.0/1.0). Rebuild teams can now target partner players,
    prospects, and next-season picks.
 2. For each top-`TOP_N_CANDIDATE_TARGETS=20` candidate, propose minimal
    greedy offers from my tradeable assets (rostered players + next-season

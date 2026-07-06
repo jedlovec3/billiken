@@ -72,7 +72,7 @@ POSTURE_WEIGHTS <- tribble(
   "contender", 1.0,        0.3,
   "bubble",    0.8,        0.5,
   "mid",       0.6,        0.7,
-  "rebuild",   0.2,        1.0
+  "rebuild",   0.0,        1.0
 )
 
 # Premium added to the partner's required incoming value so accepted offers

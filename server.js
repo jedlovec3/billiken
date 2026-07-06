@@ -737,12 +737,26 @@ function resolveDashboardValue(row) {
   return { value: null, source: null };
 }
 
+function futureValueBreakdown(row) {
+  return [2027, 2028, 2029, 2030].map((year) => ({
+    season: year,
+    projection_value: asFiniteNumber(row[`dollar_value_${year}`]),
+    prospect_value: asFiniteNumber(row[`prospect_value_${year}`]) ?? 0,
+    selected_source: row[`future_selected_source_${year}`] || null,
+    selected_value: asFiniteNumber(row[`future_selected_value_${year}`]),
+    salary: asFiniteNumber(row[`salary_${year}`]),
+    net_value: asFiniteNumber(row[`future_net_${year}`]) ?? 0,
+    discounted_value: asFiniteNumber(row[`future_discounted_${year}`]) ?? 0,
+  }));
+}
+
 function shapeTeamAssetRow(row) {
   const resolved = resolveDashboardValue(row);
   return {
     ...row,
     dashboard_value_2026: resolved.value,
     dashboard_value_source: resolved.source,
+    future_value_breakdown: futureValueBreakdown(row),
     value: resolved.value,
     value_source: resolved.source,
   };
@@ -911,7 +925,7 @@ const POSTURE_WEIGHTS = {
   contender: { w_win_now: 1.0, w_future: 0.3 },
   bubble: { w_win_now: 0.8, w_future: 0.5 },
   mid: { w_win_now: 0.6, w_future: 0.7 },
-  rebuild: { w_win_now: 0.2, w_future: 1.0 },
+  rebuild: { w_win_now: 0.0, w_future: 1.0 },
 };
 
 function postureWeights(posture) {
@@ -1131,6 +1145,8 @@ app.post("/evaluate_trade", async (c) => {
       partner_team: partnerPostureRow.billikenTeam,
       my_posture: myPostureRow.posture,
       partner_posture: partnerPostureRow.posture,
+      my_weights: myWeights,
+      partner_weights: partnerWeights,
       my_give: myGiveVals,
       my_receive: myReceiveVals,
       partner_give: partnerGiveVals,

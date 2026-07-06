@@ -242,11 +242,67 @@ drop_penalty_liability <- function(contract_status, contract_end,
   )
 }
 
+future_year_selected_value <- function(projection_value = 0, prospect_value = 0,
+                                       salary = NA_real_) {
+  projection_value <- coalesce(as.numeric(projection_value), 0)
+  prospect_value <- coalesce(as.numeric(prospect_value), 0)
+  salary <- suppressWarnings(as.numeric(salary))
+  ifelse(is.na(salary), NA_real_, pmax(projection_value, prospect_value))
+}
+
+future_year_net_value <- function(projection_value = 0, prospect_value = 0,
+                                  salary = NA_real_) {
+  selected <- future_year_selected_value(projection_value, prospect_value, salary)
+  salary <- suppressWarnings(as.numeric(salary))
+  ifelse(is.na(salary), 0, selected - salary)
+}
+
+future_year_value_source <- function(projection_value = 0, prospect_value = 0,
+                                     salary = NA_real_) {
+  projection_value <- coalesce(as.numeric(projection_value), 0)
+  prospect_value <- coalesce(as.numeric(prospect_value), 0)
+  salary <- suppressWarnings(as.numeric(salary))
+  case_when(
+    is.na(salary) ~ "not_under_contract",
+    projection_value <= 0 & prospect_value <= 0 ~ "none",
+    prospect_value > projection_value ~ "prospect",
+    TRUE ~ "projection"
+  )
+}
+
 calculate_future_asset_value <- function(surplus_2027 = 0, surplus_2028 = 0,
                                          surplus_2029 = 0, surplus_2030 = 0,
                                          prospect_value = 0,
+                                         projection_value_2027 = NULL,
+                                         projection_value_2028 = NULL,
+                                         projection_value_2029 = NULL,
+                                         projection_value_2030 = NULL,
+                                         prospect_value_2027 = NULL,
+                                         prospect_value_2028 = NULL,
+                                         prospect_value_2029 = NULL,
+                                         prospect_value_2030 = 0,
+                                         salary_2027 = NULL,
+                                         salary_2028 = NULL,
+                                         salary_2029 = NULL,
+                                         salary_2030 = NULL,
                                          drop_penalty_liability = 0,
                                          gamma = 0.7) {
+  if (!is.null(projection_value_2027) || !is.null(salary_2027) ||
+      !is.null(prospect_value_2027)) {
+    net_2027 <- future_year_net_value(projection_value_2027, prospect_value_2027, salary_2027)
+    net_2028 <- future_year_net_value(projection_value_2028, prospect_value_2028, salary_2028)
+    net_2029 <- future_year_net_value(projection_value_2029, prospect_value_2029, salary_2029)
+    net_2030 <- future_year_net_value(projection_value_2030, prospect_value_2030, salary_2030)
+
+    return(
+      net_2027 * gamma +
+        net_2028 * gamma^2 +
+        net_2029 * gamma^3 +
+        net_2030 * gamma^4 -
+        coalesce(as.numeric(drop_penalty_liability), 0)
+    )
+  }
+
   coalesce(as.numeric(surplus_2027), 0) * gamma +
     coalesce(as.numeric(surplus_2028), 0) * gamma^2 +
     coalesce(as.numeric(surplus_2029), 0) * gamma^3 +

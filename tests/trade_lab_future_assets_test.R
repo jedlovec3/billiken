@@ -82,18 +82,24 @@ test_consensus_values <- function() {
               "Prospect output should include yearly value stream columns")
 }
 
-test_future_asset_value <- function() {
+test_future_asset_value_uses_best_source_by_contract_year <- function() {
   value <- calculate_future_asset_value(
-    surplus_2027 = 10,
-    surplus_2028 = 5,
-    surplus_2029 = 0,
-    surplus_2030 = 0,
-    prospect_value = 8,
-    drop_penalty_liability = 5,
+    projection_value_2027 = 8,
+    projection_value_2028 = 30,
+    projection_value_2029 = 0,
+    projection_value_2030 = 0,
+    prospect_value_2027 = 12,
+    prospect_value_2028 = 20,
+    prospect_value_2029 = 0,
+    salary_2027 = 4,
+    salary_2028 = NA,
+    salary_2029 = NA,
+    salary_2030 = NA,
+    drop_penalty_liability = 1,
     gamma = 0.7
   )
-  assert_near(value, 12.45,
-              message = "Future value should combine discounted surplus, prospect value, and drop penalty")
+  assert_near(value, 4.6,
+              message = "Future value should use the better projection/prospect value only for contract years, then subtract salary")
 }
 
 test_rebuild_targets_include_picks_and_prospects <- function() {
@@ -252,7 +258,7 @@ test_fangraphs_board_html_parser <- function() {
 tests <- list(
   eta_multiplier = test_eta_multiplier,
   consensus_values = test_consensus_values,
-  future_asset_value = test_future_asset_value,
+  future_asset_value = test_future_asset_value_uses_best_source_by_contract_year,
   rebuild_targets = test_rebuild_targets_include_picks_and_prospects,
   auction_output_path = test_auction_output_path,
   future_projection_specs = test_future_projection_specs,
