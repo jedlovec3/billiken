@@ -201,6 +201,54 @@ test_fangraphs_csv_parser <- function() {
                "FanGraphs CSV parser should read FV")
 }
 
+test_fangraphs_board_html_parser <- function() {
+  next_data <- list(
+    props = list(
+      pageProps = list(
+        dehydratedState = list(
+          queries = list(
+            list(
+              queryKey = list("prospects/the-board"),
+              state = list(
+                data = list(
+                  list(
+                    playerName = "Konnor Griffin",
+                    Ovr_Rank = 1,
+                    Team = "PIT",
+                    Position = "SS",
+                    llevel = "MLB",
+                    ETA_Current = 2026,
+                    FV_Current = 70,
+                    cRisk = "High",
+                    Age = "20.2"
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  html <- paste0(
+    '<script id="__NEXT_DATA__" type="application/json">',
+    jsonlite::toJSON(next_data, auto_unbox = TRUE, null = "null"),
+    "</script>"
+  )
+
+  out <- extract_fangraphs_board_from_html(html)
+  assert_equal(out$Name[[1]], "Konnor Griffin",
+               "FanGraphs Board HTML parser should read embedded player name")
+  assert_equal(out$source_rank[[1]], 1,
+               "FanGraphs Board HTML parser should read overall rank")
+  assert_equal(out$mlb_org[[1]], "PIT",
+               "FanGraphs Board HTML parser should read org")
+  assert_equal(out$eta[[1]], 2026L,
+               "FanGraphs Board HTML parser should read ETA")
+  assert_equal(out$fg_fv[[1]], 70,
+               "FanGraphs Board HTML parser should read FV")
+}
+
 tests <- list(
   eta_multiplier = test_eta_multiplier,
   consensus_values = test_consensus_values,
@@ -209,7 +257,8 @@ tests <- list(
   auction_output_path = test_auction_output_path,
   future_projection_specs = test_future_projection_specs,
   mlb_payload_parser = test_mlb_payload_parser,
-  fangraphs_csv_parser = test_fangraphs_csv_parser
+  fangraphs_csv_parser = test_fangraphs_csv_parser,
+  fangraphs_board_html_parser = test_fangraphs_board_html_parser
 )
 
 for (nm in names(tests)) {
