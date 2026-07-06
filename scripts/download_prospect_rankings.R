@@ -62,6 +62,15 @@ df_col <- function(df, candidates, default) {
   rep(default, nrow(df))
 }
 
+empty_fangraphs_prospects <- function() {
+  tibble(
+    Name = character(), source = character(), source_rank = numeric(),
+    mlb_org = character(), position = character(), level = character(),
+    eta = integer(), age = numeric(), fg_rank = numeric(),
+    fg_fv = numeric(), fg_risk = character()
+  )
+}
+
 .find_entity_map <- function(objects) {
   candidates <- objects %>%
     map(.flatten_json) %>%
@@ -147,20 +156,43 @@ fetch_mlb_prospects <- function(url = "https://www.mlb.com/milb/prospects") {
   extract_mlb_prospects_from_html(resp_body_string(resp))
 }
 
-fetch_fangraphs_prospects <- function() {
-  csv_url <- Sys.getenv("FANGRAPHS_PROSPECTS_CSV_URL", unset = "")
-  if (!nzchar(csv_url)) {
-    warning("FANGRAPHS_PROSPECTS_CSV_URL not set; skipping FanGraphs prospect export.")
-    return(tibble(
-      Name = character(), source = character(), source_rank = numeric(),
-      mlb_org = character(), position = character(), level = character(),
-      eta = integer(), age = numeric(), fg_rank = numeric(),
-      fg_fv = numeric(), fg_risk = character()
-    ))
+read_fangraphs_prospect_csv <- function(csv_url,
+                                        fg_cookie = Sys.getenv("FANGRAPHS_COOKIE", unset = "")) {
+  if (str_detect(csv_url, "^https?://")) {
+    req <- request(csv_url) |>
+      req_user_agent("Mozilla/5.0") |>
+      req_headers(
+        Accept = "text/csv, application/csv, text/plain, */*",
+        Referer = "https://www.fangraphs.com/prospects/the-board"
+      ) |>
+      req_error(is_error = function(resp) FALSE)
+
+    if (nzchar(fg_cookie)) {
+      req <- req |> req_headers(Cookie = fg_cookie)
+    }
+
+    resp <- req_perform(req)
+    status <- resp_status(resp)
+    body <- resp_body_string(resp)
+
+    if (status != 200) {
+      stop(sprintf("FanGraphs prospect CSV request failed (HTTP %s)", status),
+           call. = FALSE)
+    }
+    if (str_detect(str_sub(str_squish(body), 1, 80), "^<")) {
+      stop("FanGraphs prospect CSV URL returned HTML, not CSV. Check the export URL and FanGraphs auth.",
+           call. = FALSE)
+    }
+
+    return(read_csv(I(body), show_col_types = FALSE))
   }
 
-  fg_raw <- read_csv(csv_url, show_col_types = FALSE) %>%
-    rename_with(~ "Name", any_of(c("Player", "PlayerName", "Name"))) %>%
+  read_csv(csv_url, show_col_types = FALSE)
+}
+
+standardize_fangraphs_prospects <- function(fg_raw) {
+  fg_raw <- fg_raw %>%
+    rename_with(~ "Name", any_of(c("Player", "PlayerName", "Name")))
 
   if (!"Name" %in% names(fg_raw)) {
     stop("FanGraphs prospect CSV must include a Name/Player/PlayerName column.",
@@ -190,7 +222,19 @@ fetch_fangraphs_prospects <- function() {
     fg_rank = source_rank,
     fg_fv = suppressWarnings(as.numeric(df_col(fg_raw, c("FV"), NA_real_))),
     fg_risk = as.character(df_col(fg_raw, c("Risk"), NA_character_))
-  )
+  ) %>%
+    filter(!is.na(Name), Name != "")
+}
+
+fetch_fangraphs_prospects <- function() {
+  csv_url <- Sys.getenv("FANGRAPHS_PROSPECTS_CSV_URL", unset = "")
+  if (!nzchar(csv_url)) {
+    warning("FANGRAPHS_PROSPECTS_CSV_URL not set; skipping FanGraphs prospect export.")
+    return(empty_fangraphs_prospects())
+  }
+
+  read_fangraphs_prospect_csv(csv_url) %>%
+    standardize_fangraphs_prospects()
 }
 
 write_prospect_snapshot <- function(df, latest_path, timestamp = Sys.time()) {
@@ -206,25 +250,38 @@ write_prospect_snapshot <- function(df, latest_path, timestamp = Sys.time()) {
 download_prospect_rankings <- function() {
   warnings <- character(0)
 
-  mlb <- tryCatch(
-    fetch_mlb_prospects(),
-    error = function(e) {
-      warnings <<- c(warnings, sprintf("MLB prospect fetch failed: %s", e$message))
-      tibble()
-    }
-  )
+  fetch_source <- function(label, fn) {
+    source_warnings <- character(0)
+    rows <- tryCatch(
+      withCallingHandlers(
+        fn(),
+        warning = function(w) {
+          source_warnings <<- c(source_warnings, w$message)
+          invokeRestart("muffleWarning")
+        }
+      ),
+      error = function(e) {
+        source_warnings <<- c(
+          source_warnings,
+          sprintf("%s prospect fetch failed: %s", label, e$message)
+        )
+        tibble()
+      }
+    )
+    warnings <<- c(warnings, source_warnings)
+    rows
+  }
 
-  fg <- tryCatch(
-    fetch_fangraphs_prospects(),
-    warning = function(w) {
-      warnings <<- c(warnings, w$message)
-      tibble()
-    },
-    error = function(e) {
-      warnings <<- c(warnings, sprintf("FanGraphs prospect fetch failed: %s", e$message))
-      tibble()
-    }
-  )
+  mlb <- fetch_source("MLB", fetch_mlb_prospects)
+  fg <- fetch_source("FanGraphs", fetch_fangraphs_prospects)
+
+  if (nrow(mlb) == 0) {
+    warnings <- c(warnings, "MLB prospect source returned 0 rows.")
+  }
+  if (nrow(fg) == 0) {
+    warnings <- c(warnings, "FanGraphs prospect source returned 0 rows.")
+  }
+  warnings <- unique(warnings)
 
   write_prospect_snapshot(mlb, "data/raw/prospects_mlb_latest.csv")
   write_prospect_snapshot(fg, "data/raw/prospects_fangraphs_latest.csv")
@@ -241,7 +298,13 @@ download_prospect_rankings <- function() {
              auto_unbox = TRUE, pretty = TRUE)
 
   if (nrow(mlb) == 0 && nrow(fg) == 0) {
-    stop("No prospect ranking sources were available.", call. = FALSE)
+    stop(
+      sprintf(
+        "No prospect ranking sources were available. Details: %s",
+        paste(warnings, collapse = " | ")
+      ),
+      call. = FALSE
+    )
   }
 
   invisible(list(mlb = mlb, fangraphs = fg, status = status))

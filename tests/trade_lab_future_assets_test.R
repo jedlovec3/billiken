@@ -170,6 +170,37 @@ test_mlb_payload_parser <- function() {
                "MLB parser should use team abbreviation")
 }
 
+test_fangraphs_csv_parser <- function() {
+  old_url <- Sys.getenv("FANGRAPHS_PROSPECTS_CSV_URL", unset = NA_character_)
+  on.exit({
+    if (is.na(old_url)) {
+      Sys.unsetenv("FANGRAPHS_PROSPECTS_CSV_URL")
+    } else {
+      Sys.setenv(FANGRAPHS_PROSPECTS_CSV_URL = old_url)
+    }
+  }, add = TRUE)
+
+  csv_path <- tempfile(fileext = ".csv")
+  writeLines(
+    c(
+      "Player,Rank,Org,Pos,Level,ETA,Age,FV,Risk",
+      "Test Prospect,12,CHC,SS,AA,2027,21,55,Medium"
+    ),
+    csv_path
+  )
+  Sys.setenv(FANGRAPHS_PROSPECTS_CSV_URL = csv_path)
+
+  out <- fetch_fangraphs_prospects()
+  assert_equal(out$Name[[1]], "Test Prospect",
+               "FanGraphs CSV parser should accept Player as the name column")
+  assert_equal(out$source_rank[[1]], 12,
+               "FanGraphs CSV parser should read Rank")
+  assert_equal(out$eta[[1]], 2027L,
+               "FanGraphs CSV parser should parse ETA")
+  assert_equal(out$fg_fv[[1]], 55,
+               "FanGraphs CSV parser should read FV")
+}
+
 tests <- list(
   eta_multiplier = test_eta_multiplier,
   consensus_values = test_consensus_values,
@@ -177,7 +208,8 @@ tests <- list(
   rebuild_targets = test_rebuild_targets_include_picks_and_prospects,
   auction_output_path = test_auction_output_path,
   future_projection_specs = test_future_projection_specs,
-  mlb_payload_parser = test_mlb_payload_parser
+  mlb_payload_parser = test_mlb_payload_parser,
+  fangraphs_csv_parser = test_fangraphs_csv_parser
 )
 
 for (nm in names(tests)) {
