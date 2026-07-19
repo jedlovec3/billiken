@@ -12,7 +12,7 @@
 #   * Full-season player value (data/processed/projected_player_value.csv)
 #     for sgpar / standings_value / fg_auction_dollars
 #   * In-season ROS player detail (data/processed/inseason_team_details.csv)
-#     for ROS counting stats (sgp_total + roster_status if present)
+#     for ROS counting stats/value (sgp_total + roster_status if present)
 #   * Position eligibility (data/raw/positions_latest.csv)
 #   * Player birthdates (data/processed/player_birthdates.csv) for the
 #     aging curve. Lazily refreshed by scripts/fetch_player_birthdates.R
@@ -430,12 +430,19 @@ if (nrow(ros_detail) > 0) {
 
 assets <- assets %>%
   mutate(
+    ros_standings_value_2026 = calculate_ros_standings_value(
+      ros_sgp = ros_sgp_2026,
+      full_sgpar = sgpar_full_2026,
+      full_standings_value = dollar_value_2026
+    ),
     dashboard_value_2026 = coalesce(
+      ros_standings_value_2026,
       fg_ros_auction_dollars,
       fg_auction_dollars,
       dollar_value_2026
     ),
     dashboard_value_source = case_when(
+      !is.na(ros_standings_value_2026) ~ "ros_sgp_scaled_standings_value",
       !is.na(fg_ros_auction_dollars) ~ "fangraphs_ros_auction",
       !is.na(fg_auction_dollars) ~ "fangraphs_fullseason_auction",
       !is.na(dollar_value_2026) ~ "sgpar_standings_value",
@@ -638,16 +645,19 @@ assets <- multi_year %>%
   mutate(
     # Legacy SGP-surplus column kept for back-compat and side-by-side comparison.
     win_now_surplus_sgp = coalesce(dollar_value_2026 - salary_2026, 0),
-    # In-season trade math uses FanGraphs ROS auction dollars when available.
-    # Salary is intentionally NOT subtracted: in-season the current-year salary
-    # is sunk for the keeper who paid it in March and is not transferred mid-
-    # season, so the receiving team's win-now gain is the raw rest-of-season
-    # auction value of the player.
-    #
-    # For the ~30% of rostered players FanGraphs has no ROS auction price for
-    # (deep bench / minors / Triple-A callups), fall back to the legacy SGP
-    # surplus so the column is still populated.
-    win_now_value = coalesce(fg_ros_auction_dollars, win_now_surplus_sgp, 0),
+    # In-season trade math prefers our ROS standings value so win-now reflects
+    # the actual remaining stat line instead of the auction calculator's
+    # remaining-pool budget scaling.
+    win_now_value = choose_win_now_value(
+      ros_standings_value_2026,
+      fg_ros_auction_dollars,
+      win_now_surplus_sgp
+    ),
+    win_now_value_source = choose_win_now_value_source(
+      ros_standings_value_2026,
+      fg_ros_auction_dollars,
+      win_now_surplus_sgp
+    ),
     drop_penalty_liability = drop_penalty_liability(
       contract_status,
       contract_end,
@@ -737,6 +747,7 @@ team_assets <- assets %>%
     age_2026,
     birth_year,
     ros_sgp_2026,
+    ros_standings_value_2026,
     sgpar_full_2026,
     fg_auction_dollars,
     fg_ros_auction_dollars,
@@ -766,6 +777,7 @@ team_assets <- assets %>%
     future_discounted_2029, future_discounted_2030,
     win_now_surplus_sgp,
     win_now_value,
+    win_now_value_source,
     future_value,
     total_value,
     ros_R, ros_HR, ros_RBI, ros_SB,

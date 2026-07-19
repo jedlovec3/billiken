@@ -102,6 +102,42 @@ test_future_asset_value_uses_best_source_by_contract_year <- function() {
               message = "Future value should use the better projection/prospect value only for contract years, then subtract salary")
 }
 
+test_ros_standings_value_scales_full_season_value <- function() {
+  value <- calculate_ros_standings_value(
+    ros_sgp = 0.46,
+    full_sgpar = 0.53,
+    full_standings_value = 24.86
+  )
+  assert_near(value, 21.5766037735849,
+              message = "ROS standings value should scale full-season value by ROS SGP share")
+
+  invalid <- calculate_ros_standings_value(
+    ros_sgp = 0.18,
+    full_sgpar = -0.05,
+    full_standings_value = -2.5
+  )
+  assert_true(is.na(invalid),
+              "ROS standings value should not infer positive value from a negative full-season baseline")
+}
+
+test_win_now_value_prefers_ros_standings_value <- function() {
+  value <- choose_win_now_value(
+    ros_standings_value = 21,
+    fg_ros_auction_dollars = 30,
+    win_now_surplus_sgp = -8
+  )
+  source <- choose_win_now_value_source(
+    ros_standings_value = 21,
+    fg_ros_auction_dollars = 30,
+    win_now_surplus_sgp = -8
+  )
+
+  assert_equal(value, 21,
+               "Win-now value should prefer ROS standings value over FanGraphs ROS auction dollars")
+  assert_equal(source, "ros_sgp_scaled_standings_value",
+               "Win-now source should identify ROS standings value")
+}
+
 test_rebuild_targets_include_picks_and_prospects <- function() {
   assets <- tibble(
     asset_id = c("Veteran", "pick_2027_R01", "Prospect A"),
@@ -259,6 +295,8 @@ tests <- list(
   eta_multiplier = test_eta_multiplier,
   consensus_values = test_consensus_values,
   future_asset_value = test_future_asset_value_uses_best_source_by_contract_year,
+  ros_standings_value = test_ros_standings_value_scales_full_season_value,
+  win_now_value_source = test_win_now_value_prefers_ros_standings_value,
   rebuild_targets = test_rebuild_targets_include_picks_and_prospects,
   auction_output_path = test_auction_output_path,
   future_projection_specs = test_future_projection_specs,

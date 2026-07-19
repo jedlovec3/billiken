@@ -71,19 +71,15 @@ both reflect the last keepable year (with the free `opt` year included) in
 Each player carries a value stream across 2026 → 2030 plus three derived
 aggregates:
 
-* `win_now_value` — in-season production value. **As of v1.1** this is the
-  FanGraphs ROS auction-calculator dollar value (`fg_ros_auction_dollars`)
-  when available, falling back to the legacy SGP surplus
-  (`dollar_value_2026 - salary_2026`, also exposed as `win_now_surplus_sgp`)
-  for the ~30% of rostered players FanGraphs has no ROS price for. Salary is
-  intentionally NOT subtracted in the FG ROS path: in-season, the current-
-  year salary is sunk for whichever team paid it in March; the receiving
-  team's win-now gain is the raw rest-of-season auction value of the
-  player. This switch fixes the prior over-valuation of closers (Saves is
-  a tiny category in our scoring and the SGP standings-value model gave
-  RPs implausibly high \$/yr) — closers drop ~3-4x while elite hitters
-  and SP stay roughly comparable. The legacy SGP-surplus column is
-  retained on every row as `win_now_surplus_sgp` for side-by-side checks.
+* `win_now_value` — in-season production value. **As of v1.2** this prefers
+  `ros_standings_value_2026`, which scales the player's full-season standings
+  dollar value by the share of SGP remaining in the ROS projection
+  (`ros_sgp_2026 / sgpar_full_2026`). This keeps win-now trade impact tied to
+  the actual remaining stat line. FanGraphs ROS auction dollars
+  (`fg_ros_auction_dollars`) remain on each row, but are now a fallback because
+  the auction calculator can price the remaining pool in a way that looks too
+  full-season-like for midseason trade impact. The legacy SGP-surplus column is
+  retained as `win_now_surplus_sgp` for side-by-side checks.
 * `future_value`  — for each contract year, use the higher of the player's
   projection value and prospect value, subtract that year's salary, then apply
   the discount factor (`γ = 0.7` by default). Years outside the current
@@ -196,7 +192,7 @@ Knobs (top of `trade_recommendations.R`): `TRADE_PREMIUM=1.0`,
 `MIN_ASSET_V_TO_PARTNER=0.5`, `MIN_OFFER_SIZE=1`.
 
 **v1.1 update:** `MIN_OFFER_SIZE=1` and a floored `need = max(target.v_to_partner + TRADE_PREMIUM, TRADE_PREMIUM)` guard against "free target" trades that
-emerged once `win_now_value` switched to FG ROS. When a partner has a star
+emerged while tuning the `win_now_value` source. When a partner has a star
 on a heavily underwater extension their `v_to_partner` can go negative;
 without the guard the greedy would propose acquiring them for zero assets.
 
@@ -275,7 +271,7 @@ trade rows.
 | Min target v_to_me         | `1.5`              | `trade_recommendations.R` | Don't waste rows on barely-worth-it targets |
 | Min asset v_to_partner     | `0.5`              | `trade_recommendations.R` | Drops underwater contracts from the offer pool (dump-asset guard) |
 | Min offer size             | `1`                | `trade_recommendations.R` | Every accepted trade must include at least one outgoing asset (free-target guard) |
-| Value source preference    | FG ROS > FG full > SGP | `build_team_assets.R` | Coalesce order for `win_now_value` and `dashboard_value_2026` |
+| Value source preference    | ROS SGP-scaled standings > FG ROS > FG full > SGP | `build_team_assets.R` | Coalesce order for `win_now_value` and `dashboard_value_2026` |
 
 ## Pending work / next session pickup
 1. **Custom offer builder (top next-up).** Add the drag/select UI on my side

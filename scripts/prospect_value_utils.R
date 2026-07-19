@@ -242,6 +242,46 @@ drop_penalty_liability <- function(contract_status, contract_end,
   )
 }
 
+calculate_ros_standings_value <- function(ros_sgp = NA_real_,
+                                          full_sgpar = NA_real_,
+                                          full_standings_value = NA_real_) {
+  ros_sgp <- suppressWarnings(as.numeric(ros_sgp))
+  full_sgpar <- suppressWarnings(as.numeric(full_sgpar))
+  full_standings_value <- suppressWarnings(as.numeric(full_standings_value))
+
+  ifelse(
+    is.na(ros_sgp) | is.na(full_sgpar) | is.na(full_standings_value) |
+      full_sgpar <= 0 | full_standings_value <= 0,
+    NA_real_,
+    full_standings_value * pmax(0, pmin(1, ros_sgp / full_sgpar))
+  )
+}
+
+choose_win_now_value <- function(ros_standings_value = NA_real_,
+                                 fg_ros_auction_dollars = NA_real_,
+                                 win_now_surplus_sgp = NA_real_) {
+  coalesce(
+    suppressWarnings(as.numeric(ros_standings_value)),
+    suppressWarnings(as.numeric(fg_ros_auction_dollars)),
+    suppressWarnings(as.numeric(win_now_surplus_sgp)),
+    0
+  )
+}
+
+choose_win_now_value_source <- function(ros_standings_value = NA_real_,
+                                        fg_ros_auction_dollars = NA_real_,
+                                        win_now_surplus_sgp = NA_real_) {
+  case_when(
+    !is.na(suppressWarnings(as.numeric(ros_standings_value))) ~
+      "ros_sgp_scaled_standings_value",
+    !is.na(suppressWarnings(as.numeric(fg_ros_auction_dollars))) ~
+      "fangraphs_ros_auction",
+    !is.na(suppressWarnings(as.numeric(win_now_surplus_sgp))) ~
+      "sgpar_surplus_fallback",
+    TRUE ~ "zero_fallback"
+  )
+}
+
 future_year_selected_value <- function(projection_value = 0, prospect_value = 0,
                                        salary = NA_real_) {
   projection_value <- coalesce(as.numeric(projection_value), 0)
