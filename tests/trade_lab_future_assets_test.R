@@ -120,6 +120,25 @@ test_ros_standings_value_scales_full_season_value <- function() {
               "ROS standings value should not infer positive value from a negative full-season baseline")
 }
 
+test_ros_category_standings_value_handles_negative_full_season_baseline <- function() {
+  dollars_per_sgpar <- c(
+    R = 1, RBI = 1, HR = 1, SB = 1, AVG = 1,
+    W = 10, SV = 3, SO = 2, ERA = 4, WHIP = 5
+  )
+
+  value <- calculate_ros_category_standings_value(
+    ros_sgp_W = 0.10,
+    ros_sgp_SV = 0,
+    ros_sgp_SO = 0.20,
+    ros_sgp_ERA = 0.30,
+    ros_sgp_WHIP = 0.40,
+    dollars_per_sgpar = dollars_per_sgpar
+  )
+
+  assert_near(value, 4.6,
+              message = "Direct ROS category value should not depend on full-season SGPAR being positive")
+}
+
 test_win_now_value_prefers_ros_standings_value <- function() {
   value <- choose_win_now_value(
     ros_standings_value = 21,
@@ -134,7 +153,7 @@ test_win_now_value_prefers_ros_standings_value <- function() {
 
   assert_equal(value, 21,
                "Win-now value should prefer ROS standings value over FanGraphs ROS auction dollars")
-  assert_equal(source, "ros_sgp_scaled_standings_value",
+  assert_equal(source, "ros_category_standings_value",
                "Win-now source should identify ROS standings value")
 }
 
@@ -296,6 +315,7 @@ tests <- list(
   consensus_values = test_consensus_values,
   future_asset_value = test_future_asset_value_uses_best_source_by_contract_year,
   ros_standings_value = test_ros_standings_value_scales_full_season_value,
+  ros_category_standings_value = test_ros_category_standings_value_handles_negative_full_season_baseline,
   win_now_value_source = test_win_now_value_prefers_ros_standings_value,
   rebuild_targets = test_rebuild_targets_include_picks_and_prospects,
   auction_output_path = test_auction_output_path,

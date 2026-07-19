@@ -257,6 +257,54 @@ calculate_ros_standings_value <- function(ros_sgp = NA_real_,
   )
 }
 
+derive_dollars_per_sgpar <- function(player_values,
+                                     categories = c("R", "RBI", "HR", "SB", "AVG",
+                                                    "W", "SV", "SO", "ERA", "WHIP")) {
+  out <- map_dbl(categories, function(cat) {
+    sgp_col <- paste0("sgpar_", cat)
+    dollar_col <- paste0("$_", cat)
+    if (!all(c(sgp_col, dollar_col) %in% names(player_values))) return(NA_real_)
+
+    sgp <- suppressWarnings(as.numeric(player_values[[sgp_col]]))
+    dollars <- suppressWarnings(as.numeric(player_values[[dollar_col]]))
+    ratios <- dollars / sgp
+    ratios <- ratios[is.finite(ratios) & abs(sgp) > 1e-9]
+    if (length(ratios) == 0) return(NA_real_)
+    median(ratios, na.rm = TRUE)
+  })
+  names(out) <- categories
+  out
+}
+
+calculate_ros_category_standings_value <- function(
+  ros_sgp_R = NA_real_, ros_sgp_RBI = NA_real_, ros_sgp_HR = NA_real_,
+  ros_sgp_SB = NA_real_, ros_sgp_AVG = NA_real_, ros_sgp_W = NA_real_,
+  ros_sgp_SV = NA_real_, ros_sgp_SO = NA_real_, ros_sgp_ERA = NA_real_,
+  ros_sgp_WHIP = NA_real_, dollars_per_sgpar
+) {
+  components <- tibble(
+    R = suppressWarnings(as.numeric(ros_sgp_R)),
+    RBI = suppressWarnings(as.numeric(ros_sgp_RBI)),
+    HR = suppressWarnings(as.numeric(ros_sgp_HR)),
+    SB = suppressWarnings(as.numeric(ros_sgp_SB)),
+    AVG = suppressWarnings(as.numeric(ros_sgp_AVG)),
+    W = suppressWarnings(as.numeric(ros_sgp_W)),
+    SV = suppressWarnings(as.numeric(ros_sgp_SV)),
+    SO = suppressWarnings(as.numeric(ros_sgp_SO)),
+    ERA = suppressWarnings(as.numeric(ros_sgp_ERA)),
+    WHIP = suppressWarnings(as.numeric(ros_sgp_WHIP))
+  )
+
+  categories <- names(components)
+  rates <- suppressWarnings(as.numeric(dollars_per_sgpar[categories]))
+  values <- sweep(as.matrix(components), 2, rates, `*`)
+  rate_matrix <- matrix(rates, nrow = nrow(components), ncol = length(rates),
+                        byrow = TRUE)
+  present <- rowSums(!is.na(as.matrix(components)) & !is.na(rate_matrix)) > 0
+  out <- rowSums(values, na.rm = TRUE)
+  ifelse(present, out, NA_real_)
+}
+
 choose_win_now_value <- function(ros_standings_value = NA_real_,
                                  fg_ros_auction_dollars = NA_real_,
                                  win_now_surplus_sgp = NA_real_) {
@@ -273,7 +321,7 @@ choose_win_now_value_source <- function(ros_standings_value = NA_real_,
                                         win_now_surplus_sgp = NA_real_) {
   case_when(
     !is.na(suppressWarnings(as.numeric(ros_standings_value))) ~
-      "ros_sgp_scaled_standings_value",
+      "ros_category_standings_value",
     !is.na(suppressWarnings(as.numeric(fg_ros_auction_dollars))) ~
       "fangraphs_ros_auction",
     !is.na(suppressWarnings(as.numeric(win_now_surplus_sgp))) ~

@@ -71,15 +71,17 @@ both reflect the last keepable year (with the free `opt` year included) in
 Each player carries a value stream across 2026 → 2030 plus three derived
 aggregates:
 
-* `win_now_value` — in-season production value. **As of v1.2** this prefers
-  `ros_standings_value_2026`, which scales the player's full-season standings
-  dollar value by the share of SGP remaining in the ROS projection
-  (`ros_sgp_2026 / sgpar_full_2026`). This keeps win-now trade impact tied to
-  the actual remaining stat line. FanGraphs ROS auction dollars
+* `win_now_value` — in-season production value. **As of v1.3** this prefers
+  `ros_category_standings_value_2026`, which converts the player's ROS category
+  SGP components directly into standings dollars using the same category
+  $/SGPAR rates as the full-season model. This keeps win-now trade impact tied
+  to the actual remaining stat line and works for relievers whose full-season
+  baseline is below replacement. FanGraphs ROS auction dollars
   (`fg_ros_auction_dollars`) remain on each row, but are now a fallback because
   the auction calculator can price the remaining pool in a way that looks too
-  full-season-like for midseason trade impact. The legacy SGP-surplus column is
-  retained as `win_now_surplus_sgp` for side-by-side checks.
+  full-season-like for midseason trade impact. The older scaled value
+  (`ros_standings_value_2026`) and legacy surplus (`win_now_surplus_sgp`) are
+  retained for side-by-side checks.
 * `future_value`  — for each contract year, use the higher of the player's
   projection value and prospect value, subtract that year's salary, then apply
   the discount factor (`γ = 0.7` by default). Years outside the current
@@ -271,7 +273,7 @@ trade rows.
 | Min target v_to_me         | `1.5`              | `trade_recommendations.R` | Don't waste rows on barely-worth-it targets |
 | Min asset v_to_partner     | `0.5`              | `trade_recommendations.R` | Drops underwater contracts from the offer pool (dump-asset guard) |
 | Min offer size             | `1`                | `trade_recommendations.R` | Every accepted trade must include at least one outgoing asset (free-target guard) |
-| Value source preference    | ROS SGP-scaled standings > FG ROS > FG full > SGP | `build_team_assets.R` | Coalesce order for `win_now_value` and `dashboard_value_2026` |
+| Value source preference    | ROS category standings > ROS SGP-scaled standings > FG ROS > FG full > SGP | `build_team_assets.R` | Coalesce order for `win_now_value` and `dashboard_value_2026` |
 
 ## Pending work / next session pickup
 1. **Custom offer builder (top next-up).** Add the drag/select UI on my side

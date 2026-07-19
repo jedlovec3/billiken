@@ -350,6 +350,8 @@ assets <- bind_cols(assets, parsed) %>%
 # Player value: sgpar / dollars / fg auction (full-season projection)
 # ---------------------------------------------------------------------------
 
+dollars_per_sgpar <- derive_dollars_per_sgpar(ppv)
+
 ppv_lookup <- ppv %>%
   filter(!is.na(Name)) %>%
   transmute(
@@ -399,6 +401,16 @@ if (nrow(ros_detail) > 0) {
       Name = str_squish(as.character(player_name)),
       ros_player_type = if ("player_type" %in% names(.)) player_type else NA_character_,
       ros_sgp_2026  = if ("sgp_total" %in% names(.)) suppressWarnings(as.numeric(sgp_total)) else NA_real_,
+      ros_sgp_R   = if ("sgp_R" %in% names(.))   suppressWarnings(as.numeric(sgp_R))   else NA_real_,
+      ros_sgp_HR  = if ("sgp_HR" %in% names(.))  suppressWarnings(as.numeric(sgp_HR))  else NA_real_,
+      ros_sgp_RBI = if ("sgp_RBI" %in% names(.)) suppressWarnings(as.numeric(sgp_RBI)) else NA_real_,
+      ros_sgp_SB  = if ("sgp_SB" %in% names(.))  suppressWarnings(as.numeric(sgp_SB))  else NA_real_,
+      ros_sgp_AVG = if ("sgp_AVG" %in% names(.)) suppressWarnings(as.numeric(sgp_AVG)) else NA_real_,
+      ros_sgp_W   = if ("sgp_W" %in% names(.))   suppressWarnings(as.numeric(sgp_W))   else NA_real_,
+      ros_sgp_SV  = if ("sgp_SV" %in% names(.))  suppressWarnings(as.numeric(sgp_SV))  else NA_real_,
+      ros_sgp_SO  = if ("sgp_SO" %in% names(.))  suppressWarnings(as.numeric(sgp_SO))  else NA_real_,
+      ros_sgp_ERA = if ("sgp_ERA" %in% names(.)) suppressWarnings(as.numeric(sgp_ERA)) else NA_real_,
+      ros_sgp_WHIP = if ("sgp_WHIP" %in% names(.)) suppressWarnings(as.numeric(sgp_WHIP)) else NA_real_,
       ros_R   = if ("R" %in% names(.))   suppressWarnings(as.numeric(R))   else NA_real_,
       ros_HR  = if ("HR" %in% names(.))  suppressWarnings(as.numeric(HR))  else NA_real_,
       ros_RBI = if ("RBI" %in% names(.)) suppressWarnings(as.numeric(RBI)) else NA_real_,
@@ -414,6 +426,9 @@ if (nrow(ros_detail) > 0) {
     join_by_normalized_name(
       ros_lookup,
       cols = c("ros_player_type", "ros_sgp_2026",
+               "ros_sgp_R", "ros_sgp_HR", "ros_sgp_RBI", "ros_sgp_SB",
+               "ros_sgp_AVG", "ros_sgp_W", "ros_sgp_SV", "ros_sgp_SO",
+               "ros_sgp_ERA", "ros_sgp_WHIP",
                "ros_R", "ros_HR", "ros_RBI", "ros_SB",
                "ros_W", "ros_SV", "ros_SO")
     ) %>%
@@ -423,6 +438,10 @@ if (nrow(ros_detail) > 0) {
   assets <- assets %>%
     mutate(
       ros_sgp_2026 = NA_real_,
+      ros_sgp_R = NA_real_, ros_sgp_HR = NA_real_, ros_sgp_RBI = NA_real_,
+      ros_sgp_SB = NA_real_, ros_sgp_AVG = NA_real_,
+      ros_sgp_W = NA_real_, ros_sgp_SV = NA_real_, ros_sgp_SO = NA_real_,
+      ros_sgp_ERA = NA_real_, ros_sgp_WHIP = NA_real_,
       ros_R = NA_real_, ros_HR = NA_real_, ros_RBI = NA_real_, ros_SB = NA_real_,
       ros_W = NA_real_, ros_SV = NA_real_, ros_SO = NA_real_
     )
@@ -435,13 +454,28 @@ assets <- assets %>%
       full_sgpar = sgpar_full_2026,
       full_standings_value = dollar_value_2026
     ),
+    ros_category_standings_value_2026 = calculate_ros_category_standings_value(
+      ros_sgp_R = ros_sgp_R,
+      ros_sgp_RBI = ros_sgp_RBI,
+      ros_sgp_HR = ros_sgp_HR,
+      ros_sgp_SB = ros_sgp_SB,
+      ros_sgp_AVG = ros_sgp_AVG,
+      ros_sgp_W = ros_sgp_W,
+      ros_sgp_SV = ros_sgp_SV,
+      ros_sgp_SO = ros_sgp_SO,
+      ros_sgp_ERA = ros_sgp_ERA,
+      ros_sgp_WHIP = ros_sgp_WHIP,
+      dollars_per_sgpar = dollars_per_sgpar
+    ),
     dashboard_value_2026 = coalesce(
+      ros_category_standings_value_2026,
       ros_standings_value_2026,
       fg_ros_auction_dollars,
       fg_auction_dollars,
       dollar_value_2026
     ),
     dashboard_value_source = case_when(
+      !is.na(ros_category_standings_value_2026) ~ "ros_category_standings_value",
       !is.na(ros_standings_value_2026) ~ "ros_sgp_scaled_standings_value",
       !is.na(fg_ros_auction_dollars) ~ "fangraphs_ros_auction",
       !is.na(fg_auction_dollars) ~ "fangraphs_fullseason_auction",
@@ -649,14 +683,16 @@ assets <- multi_year %>%
     # the actual remaining stat line instead of the auction calculator's
     # remaining-pool budget scaling.
     win_now_value = choose_win_now_value(
-      ros_standings_value_2026,
+      coalesce(ros_category_standings_value_2026, ros_standings_value_2026),
       fg_ros_auction_dollars,
       win_now_surplus_sgp
     ),
-    win_now_value_source = choose_win_now_value_source(
-      ros_standings_value_2026,
-      fg_ros_auction_dollars,
-      win_now_surplus_sgp
+    win_now_value_source = case_when(
+      !is.na(ros_category_standings_value_2026) ~ "ros_category_standings_value",
+      !is.na(ros_standings_value_2026) ~ "ros_sgp_scaled_standings_value",
+      !is.na(fg_ros_auction_dollars) ~ "fangraphs_ros_auction",
+      !is.na(win_now_surplus_sgp) ~ "sgpar_surplus_fallback",
+      TRUE ~ "zero_fallback"
     ),
     drop_penalty_liability = drop_penalty_liability(
       contract_status,
@@ -747,7 +783,10 @@ team_assets <- assets %>%
     age_2026,
     birth_year,
     ros_sgp_2026,
+    ros_category_standings_value_2026,
     ros_standings_value_2026,
+    ros_sgp_R, ros_sgp_HR, ros_sgp_RBI, ros_sgp_SB, ros_sgp_AVG,
+    ros_sgp_W, ros_sgp_SV, ros_sgp_SO, ros_sgp_ERA, ros_sgp_WHIP,
     sgpar_full_2026,
     fg_auction_dollars,
     fg_ros_auction_dollars,

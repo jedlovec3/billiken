@@ -636,7 +636,8 @@ tryCatch({
     select(team_id, team_name, player_name, lineup_slot, roster_status,
            any_of(c("AB", "H", "R", "HR", "RBI", "SB", "PA")),
            any_of(c("primary_position", "pt_benchmark", "pt_fraction")),
-           any_of(c("sgp_total", "sgp_hitting", "sgp_pitching"))) %>%
+           any_of(c("sgp_R", "sgp_HR", "sgp_RBI", "sgp_SB", "sgp_AVG",
+                    "sgp_total", "sgp_hitting", "sgp_pitching"))) %>%
     mutate(player_type = "hitter") %>%
     left_join(hitter_disp, by = c("team_id", "player_name")) %>%
     mutate(
@@ -648,7 +649,8 @@ tryCatch({
     select(team_id, team_name, player_name, lineup_slot, roster_status,
            any_of(c("IP", "W", "SV", "SO", "ER", "BB", "HA", "ERA", "WHIP")),
            any_of(c("pitcher_role", "pt_benchmark", "pt_fraction")),
-           any_of(c("sgp_total", "sgp_hitting", "sgp_pitching"))) %>%
+           any_of(c("sgp_W", "sgp_SV", "sgp_SO", "sgp_ERA", "sgp_WHIP",
+                    "sgp_total", "sgp_hitting", "sgp_pitching"))) %>%
     mutate(player_type = "pitcher") %>%
     left_join(pitcher_disp, by = c("team_id", "player_name")) %>%
     mutate(
