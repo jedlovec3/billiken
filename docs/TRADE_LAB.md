@@ -165,10 +165,10 @@ include `consensus_rank`, `eta`, `prospect_value`,
 `prospect_value_2027`, `prospect_value_2028`, `prospect_value_2029`,
 `prospect_value_source`, and `future_projection_source`.
 
-### Phase 5 — Trade matchmaker — ✅ v1.2 shipped (future assets)
+### Phase 5 — Trade matchmaker — ✅ v1.3 shipped (strategy override)
 **Script:** `scripts/trade_recommendations.R`
 **Output:** `data/processed/trade_targets.csv`
-**API:** `GET /trade_targets/:my_team?partner=<team>&horizon=win_now|future|balanced`
+**API:** `GET /trade_targets/:my_team?partner=<team>&stance=auto|contender|bubble|mid|rebuild&horizon=win_now|future|balanced`
 
 For each pair `(myTeam, otherTeam)`:
 
@@ -188,6 +188,13 @@ For each pair `(myTeam, otherTeam)`:
    accept them.
 4. Keep top `TOP_N_PER_PARTNER=5` trades per `(my_team, partner_team)` by
    `my_value_delta`.
+
+The pipeline generates a separate recommendation set for every initiating-team
+strategy. `my_actual_posture` preserves the posture inferred from projected
+standings, while `my_effective_posture` records the selected valuation strategy.
+The partner always uses its actual standings posture. When `stance` is omitted
+or set to `auto`, the API returns the recommendation set matching
+`my_actual_posture`. Rebuild strategy requests default to `horizon=future`.
 
 Knobs (top of `trade_recommendations.R`): `TRADE_PREMIUM=1.0`,
 `MAX_OFFER_SIZE=4`, `MIN_TARGET_VALUE_TO_ME=1.5`, `MIN_TARGET_ARB_REBUILD=-2.0`,
@@ -247,7 +254,18 @@ All downstream trade artifacts (`prospect_values`, `team_assets`,
 | `GET` | `/prospect_values`          | Consensus prospect values used by Trade Lab |
 | `GET` | `/trade_targets/:my_team`   | Ranked trade suggestions where `:my_team` initiates (200 + empty `trades` when none) |
 | `GET` | `/trade_targets/:my_team?partner=X` | Same, filtered to one partner team |
-| `POST` | `/evaluate_trade` | Body: `{ my_team, partner_team, my_asset_ids[], partner_asset_ids[] }` — posture-weighted nets for custom offers |
+| `GET` | `/trade_targets/:my_team?stance=rebuild` | Suggestions evaluated with rebuild weights; `auto` or omission uses standings posture |
+| `POST` | `/evaluate_trade` | Body: `{ my_team, partner_team, my_asset_ids[], partner_asset_ids[], my_posture_override? }` — posture-weighted nets for custom offers |
+
+`my_posture_override` accepts `auto`, `contender`, `bubble`, `mid`, or
+`rebuild`. Responses include `my_actual_posture`, `my_effective_posture`,
+`my_override_applied`, and `my_weights`. The legacy `my_posture` field remains
+and now reflects the effective posture. Partner fields remain standings-based.
+Invalid explicit strategies return HTTP 400.
+
+No Railway environment variable is required for this feature. After deploying
+the code, run the in-season update once so `trade_targets.csv` is regenerated
+with all four strategy views.
 
 Empty CSV cells deserialize to JSON `null` (not `0`) — the in-server
 `csvToJson` was hardened so the Lovable frontend can safely

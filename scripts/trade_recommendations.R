@@ -149,7 +149,7 @@ for (col in c("prospect_value", "consensus_rank", "prospect_eta",
 # Per-team weights
 # ---------------------------------------------------------------------------
 
-team_weights <- team_posture %>%
+actual_team_weights <- team_posture %>%
   select(billikenTeam, team_name, posture, proj_finish) %>%
   left_join(POSTURE_WEIGHTS, by = "posture") %>%
   # Fall back to "mid" weights for any team with an unrecognised posture so
@@ -159,7 +159,13 @@ team_weights <- team_posture %>%
     w_future  = coalesce(w_future,  0.7)
   )
 
-teams <- team_weights$billikenTeam
+effective_team_weights <- build_effective_team_weights(
+  team_posture %>% select(billikenTeam, team_name, posture, proj_finish),
+  POSTURE_WEIGHTS
+) %>%
+  mutate(posture = effective_posture)
+
+teams <- unique(actual_team_weights$billikenTeam)
 
 # ---------------------------------------------------------------------------
 # Build asset universe: players + next-season picks
@@ -280,7 +286,9 @@ build_trade_row <- function(target, offer_pool, my_w, p_w, me, partner,
 
   tibble(
     my_team               = me,
-    my_posture            = my_w$posture,
+    my_actual_posture     = my_w$actual_posture,
+    my_effective_posture  = my_w$effective_posture,
+    my_posture            = my_w$effective_posture,
     partner_team          = partner,
     partner_posture       = p_w$posture,
     target_player         = target$asset_id,
@@ -315,96 +323,101 @@ build_trade_row <- function(target, offer_pool, my_w, p_w, me, partner,
 results <- list()
 
 for (me in teams) {
-  my_w <- team_weights %>% filter(billikenTeam == me)
-  if (nrow(my_w) == 0) next
-
   my_assets_raw <- all_assets %>% filter(billikenTeam == me)
 
-  for (partner in setdiff(teams, me)) {
-    p_w <- team_weights %>% filter(billikenTeam == partner)
-    if (nrow(p_w) == 0) next
-
-    partner_assets_raw <- all_assets %>% filter(billikenTeam == partner)
-
-    my_priced      <- attach_team_values(my_assets_raw,      my_w, p_w)
-    partner_priced <- attach_team_values(partner_assets_raw, my_w, p_w)
-
-    # Pre-sort my offer pool: send them stuff worth more to them than to me,
-    # but only include assets the partner would actually accept (positive
-    # value to them). Drops cap albatrosses out of the candidate pool.
-    offer_pool <- my_priced %>%
-      filter(v_to_partner >= MIN_ASSET_V_TO_PARTNER) %>%
-      mutate(give_arb = v_to_partner - v_to_me)
-
-    # Rebuild selling to contenders: lead with expiring vets (win-now, no future).
-    if (my_w$posture == "rebuild" &&
-        p_w$posture %in% c("contender", "bubble")) {
-      offer_pool <- offer_pool %>%
-        arrange(
-          desc(coalesce(is_expiring, FALSE)),
-          desc(win_now_value / pmax(future_value, 0.25)),
-          desc(give_arb)
-        )
-    } else {
-      offer_pool <- offer_pool %>% arrange(desc(give_arb))
-    }
-
-    targets <- select_targets(partner_priced, my_w$posture)
-    if (nrow(targets) == 0) next
-
-    pair_trades <- list()
-
-    for (i in seq_len(nrow(targets))) {
-      target <- targets[i, ]
-      row <- build_trade_row(
-        target, offer_pool, my_w, p_w, me, partner,
-        trade_quality = "strong"
+  for (effective_posture in POSTURE_WEIGHTS$posture) {
+    my_w <- effective_team_weights %>%
+      filter(
+        billikenTeam == me,
+        .data$effective_posture == .env$effective_posture
       )
-      if (!is.null(row)) pair_trades[[length(pair_trades) + 1]] <- row
-    }
+    if (nrow(my_w) == 0) next
 
-    # Stretch pass: only for non-rebuild (rebuild trades must clear future delta).
-    if (my_w$posture != "rebuild" &&
-        length(pair_trades) < TOP_N_PER_PARTNER && nrow(offer_pool) > 0) {
-      existing_targets <- if (length(pair_trades) > 0) {
-        map_chr(pair_trades, ~ .x$target_player)
+    for (partner in setdiff(teams, me)) {
+      p_w <- actual_team_weights %>% filter(billikenTeam == partner)
+      if (nrow(p_w) == 0) next
+
+      partner_assets_raw <- all_assets %>% filter(billikenTeam == partner)
+
+      my_priced      <- attach_team_values(my_assets_raw,      my_w, p_w)
+      partner_priced <- attach_team_values(partner_assets_raw, my_w, p_w)
+
+      # Pre-sort my offer pool: send them stuff worth more to them than to me,
+      # but only include assets the partner would actually accept.
+      offer_pool <- my_priced %>%
+        filter(v_to_partner >= MIN_ASSET_V_TO_PARTNER) %>%
+        mutate(give_arb = v_to_partner - v_to_me)
+
+      # Rebuild selling to contenders: lead with expiring vets.
+      if (my_w$posture == "rebuild" &&
+          p_w$posture %in% c("contender", "bubble")) {
+        offer_pool <- offer_pool %>%
+          arrange(
+            desc(coalesce(is_expiring, FALSE)),
+            desc(win_now_value / pmax(future_value, 0.25)),
+            desc(give_arb)
+          )
       } else {
-        character(0)
+        offer_pool <- offer_pool %>% arrange(desc(give_arb))
       }
-      stretch_targets <- targets %>%
-        filter(!asset_id %in% existing_targets)
 
-      for (i in seq_len(nrow(stretch_targets))) {
-        if (length(pair_trades) >= TOP_N_PER_PARTNER) break
-        target <- stretch_targets[i, ]
+      targets <- select_targets(partner_priced, my_w$posture)
+      if (nrow(targets) == 0) next
+
+      pair_trades <- list()
+
+      for (i in seq_len(nrow(targets))) {
+        target <- targets[i, ]
         row <- build_trade_row(
           target, offer_pool, my_w, p_w, me, partner,
-          trade_quality = "stretch"
+          trade_quality = "strong"
         )
         if (!is.null(row)) pair_trades[[length(pair_trades) + 1]] <- row
       }
-    }
 
-    # Last resort (non-rebuild only): top v_to_me targets with any valid offer.
-    if (my_w$posture != "rebuild" &&
-        length(pair_trades) == 0 && nrow(offer_pool) > 0) {
-      fallback_targets <- partner_priced %>%
-        filter(asset_type == "player", v_to_me >= MIN_TARGET_VALUE_TO_ME) %>%
-        arrange(desc(v_to_me)) %>%
-        head(TOP_N_PER_PARTNER)
+      # Stretch pass: only for non-rebuild.
+      if (my_w$posture != "rebuild" &&
+          length(pair_trades) < TOP_N_PER_PARTNER && nrow(offer_pool) > 0) {
+        existing_targets <- if (length(pair_trades) > 0) {
+          map_chr(pair_trades, ~ .x$target_player)
+        } else {
+          character(0)
+        }
+        stretch_targets <- targets %>%
+          filter(!asset_id %in% existing_targets)
 
-      for (i in seq_len(nrow(fallback_targets))) {
-        target <- fallback_targets[i, ]
-        row <- build_trade_row(
-          target, offer_pool, my_w, p_w, me, partner,
-          trade_quality = "fallback"
-        )
-        if (!is.null(row)) pair_trades[[length(pair_trades) + 1]] <- row
+        for (i in seq_len(nrow(stretch_targets))) {
+          if (length(pair_trades) >= TOP_N_PER_PARTNER) break
+          target <- stretch_targets[i, ]
+          row <- build_trade_row(
+            target, offer_pool, my_w, p_w, me, partner,
+            trade_quality = "stretch"
+          )
+          if (!is.null(row)) pair_trades[[length(pair_trades) + 1]] <- row
+        }
       }
-    }
 
-    if (length(pair_trades) > 0) {
-      results <- c(results, pair_trades)
+      # Last resort (non-rebuild only): top targets with any valid offer.
+      if (my_w$posture != "rebuild" &&
+          length(pair_trades) == 0 && nrow(offer_pool) > 0) {
+        fallback_targets <- partner_priced %>%
+          filter(asset_type == "player", v_to_me >= MIN_TARGET_VALUE_TO_ME) %>%
+          arrange(desc(v_to_me)) %>%
+          head(TOP_N_PER_PARTNER)
+
+        for (i in seq_len(nrow(fallback_targets))) {
+          target <- fallback_targets[i, ]
+          row <- build_trade_row(
+            target, offer_pool, my_w, p_w, me, partner,
+            trade_quality = "fallback"
+          )
+          if (!is.null(row)) pair_trades[[length(pair_trades) + 1]] <- row
+        }
+      }
+
+      if (length(pair_trades) > 0) {
+        results <- c(results, pair_trades)
+      }
     }
   }
 }
@@ -415,7 +428,7 @@ if (nrow(trade_targets) == 0) {
   message("No qualifying trades found; writing empty file.")
 } else {
   trade_targets <- trade_targets %>%
-    group_by(my_team, partner_team) %>%
+    group_by(my_team, my_effective_posture, partner_team) %>%
     arrange(
       desc(trade_quality == "strong"),
       desc(trade_quality == "stretch"),
@@ -424,7 +437,12 @@ if (nrow(trade_targets) == 0) {
     ) %>%
     slice_head(n = TOP_N_PER_PARTNER) %>%
     ungroup() %>%
-    arrange(my_team, partner_team, desc(coalesce(my_future_delta, my_value_delta)))
+    arrange(
+      my_team,
+      my_effective_posture,
+      partner_team,
+      desc(coalesce(my_future_delta, my_value_delta))
+    )
 }
 
 # ---------------------------------------------------------------------------

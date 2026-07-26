@@ -399,6 +399,29 @@ calculate_future_asset_value <- function(surplus_2027 = 0, surplus_2028 = 0,
     coalesce(as.numeric(drop_penalty_liability), 0)
 }
 
+build_effective_team_weights <- function(team_posture, posture_weights) {
+  valid_postures <- as.character(posture_weights$posture)
+
+  actual_teams <- team_posture %>%
+    mutate(
+      actual_posture = if_else(
+        as.character(posture) %in% valid_postures,
+        as.character(posture),
+        "mid"
+      )
+    ) %>%
+    select(-posture)
+
+  effective_weights <- posture_weights %>%
+    transmute(
+      effective_posture = as.character(posture),
+      w_win_now = as.numeric(w_win_now),
+      w_future = as.numeric(w_future)
+    )
+
+  tidyr::crossing(actual_teams, effective_weights)
+}
+
 select_trade_targets_for_posture <- function(priced_assets, my_posture,
                                              min_target_value = 1.5,
                                              min_rebuild_arb = -2.0,

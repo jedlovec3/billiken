@@ -3,6 +3,13 @@ import { execFile } from "child_process";
 import { promises as fs } from "fs";
 import { join } from "path";
 import { readdirSync, statSync } from "fs";
+import {
+  defaultTradeHorizon,
+  findTeamPosture,
+  filterTradeTargetsByPosture,
+  postureWeights,
+  resolveEffectivePosture,
+} from "./lib/trade_posture.js";
 
 const app = new Hono();
 const PORT = process.env.PORT || 3000;
@@ -920,18 +927,6 @@ app.get("/prospect_values", async (c) => {
   }
 });
 
-// Posture weights (mirror scripts/trade_recommendations.R POSTURE_WEIGHTS).
-const POSTURE_WEIGHTS = {
-  contender: { w_win_now: 1.0, w_future: 0.3 },
-  bubble: { w_win_now: 0.8, w_future: 0.5 },
-  mid: { w_win_now: 0.6, w_future: 0.7 },
-  rebuild: { w_win_now: 0.0, w_future: 1.0 },
-};
-
-function postureWeights(posture) {
-  return POSTURE_WEIGHTS[posture] || POSTURE_WEIGHTS.mid;
-}
-
 function weightedAssetValue(asset, weights) {
   const wn = asFiniteNumber(asset.win_now_value) ?? 0;
   const fut = asFiniteNumber(asset.future_value) ?? 0;
@@ -967,16 +962,42 @@ function sortTradeTargets(trades, horizon) {
 // :my_team is the side initiating the trade. Optional query params:
 //   partner=<substring>    filter to trades against one partner team
 //   horizon=win_now|future|balanced (default balanced)
+//   stance=auto|contender|bubble|mid|rebuild (default auto)
 //
 // Backed by data/processed/trade_targets.csv (built by
 // scripts/trade_recommendations.R).
 app.get("/trade_targets/:my_team", async (c) => {
   try {
     const myTeamRaw = decodeURIComponent(c.req.param("my_team")).toLowerCase();
-    const rows = await readProcessedCsv("trade_targets.csv");
+    const [rows, postureRows] = await Promise.all([
+      readProcessedCsv("trade_targets.csv"),
+      readProcessedCsv("team_posture.csv"),
+    ]);
 
-    let filtered = rows.filter(
+    const teamRows = rows.filter(
       (r) => r.my_team && String(r.my_team).toLowerCase().includes(myTeamRaw)
+    );
+    const postureRow = findTeamPosture(postureRows, myTeamRaw);
+    const matchedTeam = postureRow?.billikenTeam ?? teamRows[0]?.my_team ?? null;
+    const actualPosture =
+      postureRow?.posture ??
+      teamRows[0]?.my_actual_posture ??
+      teamRows[0]?.my_posture ??
+      "mid";
+
+    let postureResolution;
+    try {
+      postureResolution = resolveEffectivePosture(
+        actualPosture,
+        c.req.query("stance")
+      );
+    } catch (error) {
+      return c.json({ error: error.message }, { status: 400 });
+    }
+
+    let filtered = filterTradeTargetsByPosture(
+      teamRows,
+      postureResolution.effectivePosture
     );
 
     const partnerParam = c.req.query("partner");
@@ -989,18 +1010,19 @@ app.get("/trade_targets/:my_team", async (c) => {
       );
     }
 
-    const horizon = (c.req.query("horizon") || "balanced").toLowerCase();
-    const myTeam =
-      filtered.length > 0
-        ? filtered[0].my_team
-        : rows.find((r) =>
-            r.my_team && String(r.my_team).toLowerCase().includes(myTeamRaw)
-          )?.my_team ?? null;
+    const horizon = defaultTradeHorizon(
+      postureResolution.effectivePosture,
+      c.req.query("horizon")
+    );
 
     const trades = sortTradeTargets(filtered, horizon);
 
     return c.json({
-      my_team: myTeam,
+      my_team: matchedTeam,
+      my_actual_posture: postureResolution.actualPosture,
+      my_effective_posture: postureResolution.effectivePosture,
+      my_override_applied: postureResolution.overrideApplied,
+      my_weights: postureWeights(postureResolution.effectivePosture),
       horizon,
       trades,
       count: trades.length,
@@ -1022,7 +1044,8 @@ app.get("/trade_targets/:my_team", async (c) => {
 
 // POST /evaluate_trade — posture-weighted value for a manual two-team trade.
 // Body JSON:
-//   { my_team, partner_team, my_asset_ids: [], partner_asset_ids: [] }
+//   { my_team, partner_team, my_asset_ids: [], partner_asset_ids: [],
+//     my_posture_override?: "auto"|"contender"|"bubble"|"mid"|"rebuild" }
 // Asset ids are player Names or pick ids like pick_2027_R02.
 app.post("/evaluate_trade", async (c) => {
   try {
@@ -1066,7 +1089,20 @@ app.post("/evaluate_trade", async (c) => {
       });
     }
 
-    const myWeights = postureWeights(myPostureRow.posture);
+    let myPostureResolution;
+    try {
+      myPostureResolution = resolveEffectivePosture(
+        myPostureRow.posture,
+        body.my_posture_override
+      );
+    } catch (error) {
+      return c.json({ error: error.message }, { status: 400 });
+    }
+
+    const partnerPostureResolution = resolveEffectivePosture(
+      partnerPostureRow.posture
+    );
+    const myWeights = postureWeights(myPostureResolution.effectivePosture);
     const partnerWeights = postureWeights(partnerPostureRow.posture);
 
     const nextYear = new Date().getFullYear() + 1;
@@ -1143,8 +1179,13 @@ app.post("/evaluate_trade", async (c) => {
     return c.json({
       my_team: myPostureRow.billikenTeam,
       partner_team: partnerPostureRow.billikenTeam,
-      my_posture: myPostureRow.posture,
-      partner_posture: partnerPostureRow.posture,
+      my_posture: myPostureResolution.effectivePosture,
+      my_actual_posture: myPostureResolution.actualPosture,
+      my_effective_posture: myPostureResolution.effectivePosture,
+      my_override_applied: myPostureResolution.overrideApplied,
+      partner_posture: partnerPostureResolution.effectivePosture,
+      partner_actual_posture: partnerPostureResolution.actualPosture,
+      partner_effective_posture: partnerPostureResolution.effectivePosture,
       my_weights: myWeights,
       partner_weights: partnerWeights,
       my_give: myGiveVals,
@@ -1158,9 +1199,10 @@ app.post("/evaluate_trade", async (c) => {
       partner_win_now_net,
       partner_future_net,
       guidance:
-        myPostureRow.posture === "rebuild"
+        myPostureResolution.effectivePosture === "rebuild"
           ? "Rebuild: prioritize my_future_net > 0; send expiring vets for partner_win_now_net > 0."
-          : myPostureRow.posture === "contender" || myPostureRow.posture === "bubble"
+          : myPostureResolution.effectivePosture === "contender" ||
+            myPostureResolution.effectivePosture === "bubble"
           ? "Contender: prioritize my_win_now_net > 0."
           : null,
       unresolved_my_ids: myIds.filter(

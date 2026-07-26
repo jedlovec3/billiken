@@ -178,6 +178,35 @@ test_rebuild_targets_include_picks_and_prospects <- function() {
               "Rebuild targets should include prospects")
 }
 
+test_effective_team_weights_expand_all_strategies <- function() {
+  posture_weights <- tribble(
+    ~posture,    ~w_win_now, ~w_future,
+    "contender", 1.0,        0.3,
+    "bubble",    0.8,        0.5,
+    "mid",       0.6,        0.7,
+    "rebuild",   0.0,        1.0
+  )
+  team_posture <- tibble(
+    billikenTeam = c("BLUE SOCKS", "HOOSIERS"),
+    team_name = c("Blue Socks", "Hoosiers"),
+    posture = c("mid", "contender"),
+    proj_finish = c(7L, 1L)
+  )
+
+  out <- build_effective_team_weights(team_posture, posture_weights)
+  blue <- out %>% filter(billikenTeam == "BLUE SOCKS")
+  rebuild <- blue %>% filter(effective_posture == "rebuild")
+
+  assert_equal(nrow(blue), 4L,
+               "Each team should receive one recommendation view per strategy")
+  assert_true(all(blue$actual_posture == "mid"),
+              "Strategy expansion should preserve the standings posture")
+  assert_near(rebuild$w_win_now, 0,
+              message = "Rebuild strategy should ignore win-now value")
+  assert_near(rebuild$w_future, 1,
+              message = "Rebuild strategy should use full future value")
+}
+
 test_auction_output_path <- function() {
   path <- auction_output_path(2026, "rfangraphsdc", "")
   assert_equal(path, file.path("data/raw", "auction_values_ros_2026.csv"),
@@ -318,6 +347,7 @@ tests <- list(
   ros_category_standings_value = test_ros_category_standings_value_handles_negative_full_season_baseline,
   win_now_value_source = test_win_now_value_prefers_ros_standings_value,
   rebuild_targets = test_rebuild_targets_include_picks_and_prospects,
+  effective_team_weights = test_effective_team_weights_expand_all_strategies,
   auction_output_path = test_auction_output_path,
   future_projection_specs = test_future_projection_specs,
   mlb_payload_parser = test_mlb_payload_parser,

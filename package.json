@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "bun server.js"
+    "start": "bun server.js",
+    "test": "node --test tests/*.js"
   },
   "dependencies": {
     "hono": "^4.0.0"

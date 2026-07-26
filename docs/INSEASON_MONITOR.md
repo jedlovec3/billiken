@@ -126,8 +126,8 @@ All served by `server.js` (Bun/Hono on Railway).
 | `GET` | `/inseason_free_agents/:player` | Single-player lookup by exact name (case-insensitive). |
 | `GET` | `/inseason_status` | Returns the pipeline status JSON (last_updated, status, warnings, errors, sgp_source, n_free_agents). |
 | `GET` | `/prospect_values` | Returns consensus prospect values used by Trade Lab. |
-| `GET` | `/trade_targets/:my_team` | Returns suggested trades for a team. Query params: `partner`, `horizon=win_now\|future\|balanced`. |
-| `POST` | `/evaluate_trade` | Evaluates a custom two-team trade using player names and pick ids like `pick_2027_R01`. |
+| `GET` | `/trade_targets/:my_team` | Returns suggested trades for a team. Query params: `partner`, `stance=auto\|contender\|bubble\|mid\|rebuild`, `horizon=win_now\|future\|balanced`. |
+| `POST` | `/evaluate_trade` | Evaluates a custom two-team trade using player names and pick ids like `pick_2027_R01`; optional body field `my_posture_override` selects the initiating team's strategy. |
 
 CORS is enabled for all origins (`Access-Control-Allow-Origin: *`) so the Lovable frontend can call the API.
 
@@ -217,8 +217,12 @@ To modify the Lovable app, open it in the Lovable editor and prompt changes in n
 - `GET /inseason_pt_benchmarks` → `{ rows, hitters: {C, 1B, 2B, 3B, SS, OF, DH}, pitchers: {SP, RP} }` — league-wide playing-time benchmarks (median PA / median IP) used by the prorated view; surface as tooltips so users can see what a "full-time" hitter / SP / RP looks like.
 - `GET /inseason_free_agents?type=hitter|pitcher&position=<pos>&limit=50` → `{ free_agents: [{rank_overall, rank_by_type, player_type, Name, Team, positions, AB?, R?, HR?, …, IP?, W?, …, sgp_total}], count, status }`
 - `GET /prospect_values` → `{ prospect_values: [{Name, consensus_rank, eta, prospect_value, prospect_value_2027, prospect_value_2028, prospect_value_2029, prospect_value_source, future_projection_source}], count }`
-- `GET /trade_targets/{team}?horizon=future` → `{ my_team, horizon, trades: [{target_asset_type, target_asset_label, target_player, proposed_offer, my_future_delta, my_win_now_delta, partner_win_now_delta, target_prospect_value?, target_pick_value?}], count }`
-- `POST /evaluate_trade` with `{ my_team, partner_team, my_asset_ids, partner_asset_ids }` → weighted win-now/future nets for both teams. Pick ids use `pick_YYYY_RNN`.
+- `GET /trade_targets/{team}?stance=rebuild` → `{ my_team, my_actual_posture, my_effective_posture, my_override_applied, my_weights, horizon, trades: [{target_asset_type, target_asset_label, target_player, proposed_offer, my_future_delta, my_win_now_delta, partner_win_now_delta, target_prospect_value?, target_pick_value?}], count }`
+- `POST /evaluate_trade` with `{ my_team, partner_team, my_asset_ids, partner_asset_ids, my_posture_override? }` → weighted win-now/future nets for both teams plus actual/effective posture metadata. Pick ids use `pick_YYYY_RNN`.
+
+Strategy overrides do not require a Railway environment variable. Deploy the
+code and trigger `/run_inseason_update` once to rebuild stance-specific trade
+suggestions.
 
 ## Local development
 
