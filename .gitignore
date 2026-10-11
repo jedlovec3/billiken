@@ -30,3 +30,34 @@ bun.lockb
 
 # R notebook outputs
 *.nb.html
+
+# Context repository hygiene (2026-10-11)
+.DS_Store
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*
+*token*.json
+.worktrees/
+.codex-tmp/
+.codex-build/
+.codex-finalizer/
+.superpowers/
+.tmp*/
+.tmp*
+tmp/
+outputs/
+output/
+*.inspect.ndjson
+*.sqlite
+*.sqlite-*
+*.log
+~$*
+artifacts/local-only/
